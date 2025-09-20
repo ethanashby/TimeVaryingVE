@@ -1,7 +1,10 @@
 # Ready-to-run iterative TMLE for the semiparametric logistic model
 # Dependencies: mgcv
 if(!requireNamespace("mgcv", quietly=TRUE)) install.packages("mgcv")
+library(tidyverse)
 library(mgcv)
+library(splines)
+library(coneproj)
 
 psi_d2 <- function(Tvec, Vvec) {
   # Vmat: n x d
@@ -9,13 +12,13 @@ psi_d2 <- function(Tvec, Vvec) {
   return(cbind(as.numeric(Tvec - Vvec > 0), pmax(0, Tvec-Vvec)))
 }
 
-psi_bs <- function(Tvec, Vvec) {
+psi_bs <- function(Tvec, Vvec, df=3) {
   # Vmat: n x d
   # default: psi(T-V) = V
-  return(cbind(as.numeric(Tvec - Vvec > 0), bs(pmax(0, Tvec-Vvec), df=3, degree = 3)))
+  return(cbind(as.numeric(Tvec - Vvec > 0), bs(pmax(0, Tvec-Vvec), df=df, degree = 3)))
 }
 
-tmle_iterative <- function(dat, psi_delta, maxit = 500, tol = 1e-6,
+tmle_iterative <- function(dat, J.name = "J", T.name = "T", V.name="V", psi_delta, maxit = 500, tol = 1e-6,
                            smooth_r = TRUE, smooth_alpha = TRUE, verbose = TRUE) {
   
   #dat=dat_wane_run
@@ -24,9 +27,9 @@ tmle_iterative <- function(dat, psi_delta, maxit = 500, tol = 1e-6,
   # psi_delta: function(delta) -> numeric vector length d
   # d: dimension of psi
   n <- nrow(dat)
-  J <- as.numeric(dat$J)
-  Tvec <- dat$`T`
-  Vvec <- dat$V
+  J <- as.numeric(dat[[J.name]])
+  Tvec <- dat[[T.name]]
+  Vvec <- dat[[V.name]]
   
   # build X matrix (n x d)
   
