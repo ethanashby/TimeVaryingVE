@@ -5,23 +5,20 @@ library(tidyverse)
 library(mgcv)
 library(splines)
 library(coneproj)
+library(splines2)
 
-psi_d2 <- function(Tvec, Vvec) {
-  # Vmat: n x d
-  # default: psi(T-V) = V
-  return(cbind(as.numeric(Tvec - Vvec > 0), pmax(0, Tvec-Vvec)))
-}
+####
+# Useful Basis functions
 
-psi_bs <- function(Tvec, Vvec, df=3) {
-  # Vmat: n x d
-  # default: psi(T-V) = V
-  return(cbind(as.numeric(Tvec - Vvec > 0), bs(pmax(0, Tvec-Vvec), df=df, degree = 3)))
-}
+# Create linear basis function and predict method
 
-tmle_iterative <- function(dat, J.name = "J", T.name = "T", V.name="V", psi_delta, maxit = 500, tol = 1e-6,
-                           smooth_r = TRUE, smooth_alpha = TRUE, verbose = TRUE) {
+source("~/Desktop/GitHub/TimeVaryingVE/basis_f.R")
+
+tmle_iterative <- function(dat, J.name = "J", T.name = "T", V.early.name=NULL, V.name="V", psi_delta, maxit = 500, tol = 1e-6,
+                           smooth_r = TRUE, smooth_alpha = TRUE, verbose = TRUE, monotone=TRUE, Amat=NULL, ...) {
   
   #dat=dat_wane_run
+  #dat=delta_eligible
   
   # dat: data.frame with columns J (0/1), T, V
   # psi_delta: function(delta) -> numeric vector length d
@@ -30,24 +27,16 @@ tmle_iterative <- function(dat, J.name = "J", T.name = "T", V.name="V", psi_delt
   J <- as.numeric(dat[[J.name]])
   Tvec <- dat[[T.name]]
   Vvec <- dat[[V.name]]
+  # build Z matrix (nxd)
+  if(!is.null(V.early.name)){
+    Vvec_early <- dat[[V.early.name]]
+    base<-psi_delta(Tvec, Vvec, Vvec_early, ...)
+  }else{
+    base<-psi_delta(Tvec, Vvec, ...)
+  }
+
+  Z <- base$mat
   
-  # build X matrix (n x d)
-  
-  Z<-psi_delta(Tvec, Vvec)
-  
-  # build_Z <- function() {
-  #   X <- matrix(0, nrow = n, ncol = d)
-  #   for (i in seq_len(n)) {
-  #     if (!is.na(Vvec[i]) && Vvec[i] <= Tvec[i]) {
-  #       X[i, ] <- psi_delta(Tvec[i], Vvec[i])
-  #     } else {
-  #       X[i, ] <- rep(0, d)
-  #     }
-  #   }
-  #   X
-  # }
-  
-  #Z <- build_Z()
   d <- ncol(Z)
   
   # initial estimates
@@ -56,12 +45,18 @@ tmle_iterative <- function(dat, J.name = "J", T.name = "T", V.name="V", psi_delt
   # initial alpha: fit GAM of J ~ s(T) (link scale)
   fit_a0 <- gam(J ~ s(Tvec), family = binomial)
   alpha_hat <- predict(fit_a0, type = "link")
-  alpha_hat <- alpha_hat - mean(alpha_hat)  # identifiability: center alpha (mean 0)
+  #alpha_hat <- alpha_hat - mean(alpha_hat)  # identifiability: center alpha (mean 0)
   eta <- as.numeric(as.vector(Z %*% beta) + alpha_hat)
   p <- plogis(eta)
   
   iter <- 0
   converged <- FALSE
+  
+  ######
+  # Main code that solves for unknown parameters
+  
+  if (verbose & monotone) cat(sprintf("Starting Estimation Monotone f()\n"))
+  if (verbose & !monotone) cat(sprintf("Starting Estimation Unconstrained f()\n"))
   for (k in seq_len(maxit)) {
     iter <- k
     w <- p * (1 - p)                  # weight vector length n
@@ -91,19 +86,34 @@ tmle_iterative <- function(dat, J.name = "J", T.name = "T", V.name="V", psi_delt
         # Add a tiny ridge penalty if all weights are zero
         w_use <- w
         if (all(w_use == 0)) w_use <- rep(1e-6, n)
-        fit_r <- try(gam(Xcol ~ s(`T`, k = min(20, max(5, length(unique(Tvec))/4))), 
-                         data = df_tmp, weights = w_use), silent = TRUE)
+        
+        K=floor(n^(1/3))
+        
+        if(all(df_tmp$Xcol==0 | df_tmp$Xcol==1)){
+        fit_r <- suppressWarnings(try(gam(Xcol ~ s(`T`),
+                     data = df_tmp, weights = w_use, family=binomial), silent = TRUE))
+        }else{
+        fit_r <- suppressWarnings(try(gam(Xcol ~ s(`T`),
+                         data = df_tmp, weights = w_use), silent = TRUE))
+        }
+        # fit_r <- try(gam(Xcol ~ s(`T`, k = min(20, max(5, length(unique(Tvec))/4))), 
+        #                  data = df_tmp, weights = w_use), silent = TRUE)
+        
         if (inherits(fit_r, "try-error")) {
           # fallback to loess
-          r_mat[, j] <- predict(loess(X[, j] ~ Tvec, weights = w_use), newdata = Tvec)
+          r_mat[, j] <- predict(loess(X[, j] ~ Tvec, weights = w_use), newdata = Tvec, type="response") #### CHANGED HERE
         } else {
-          r_mat[, j] <- predict(fit_r, newdata = df_tmp)
+          r_mat[, j] <- predict(fit_r, newdata = df_tmp, type = "response") #### CHANGED HERE
         }
         r_mat[is.na(r_mat[, j]), j] <- 0
       }
     }
     
     H <- Z - r_mat   # n x d matrix
+    
+    #H <- scale(H, center=TRUE, scale=FALSE)
+    
+    ### Targeting step
     
     # Attempt logistic fluctuation with glm: J ~ -1 + H, offset = qlogis(p)
     # Prepare data frame
@@ -113,7 +123,7 @@ tmle_iterative <- function(dat, J.name = "J", T.name = "T", V.name="V", psi_delt
     offset_vec <- qlogis(p)
     
     # Build formula programmatically
-    formula_str <- paste("J ~ -1 +", paste(names(df_fluct)[1:d], collapse = "+"))
+    formula_str <- paste("J ~ -1 + ", paste(names(df_fluct)[1:d], collapse = "+"))
     fit_eps <- try(glm(as.formula(formula_str), family = binomial, data = df_fluct, offset = offset_vec), silent = TRUE)
     
     if (inherits(fit_eps, "try-error") || any(is.na(coef(fit_eps)))) {
@@ -139,7 +149,6 @@ tmle_iterative <- function(dat, J.name = "J", T.name = "T", V.name="V", psi_delt
       eps_hat <- as.numeric(eps_hat)
     }
     
-    # update: Option A (simple): beta <- beta + eps
     beta_new <- beta + eps_hat
     
     # update logits and alpha profile: eta_new = logit(p) + H eps
@@ -151,19 +160,22 @@ tmle_iterative <- function(dat, J.name = "J", T.name = "T", V.name="V", psi_delt
       df_alpha <- data.frame(alpha = alpha_hat_new, T = Tvec)
       fit_alpha <- try(gam(alpha ~ s(`T`, k = min(20, max(5, length(unique(Tvec))/4))), data = df_alpha), silent = TRUE)
       if (inherits(fit_alpha, "try-error")) {
-        alpha_hat <- alpha_hat_new - mean(alpha_hat_new)  # at least center
+        #alpha_hat <- alpha_hat_new - mean(alpha_hat_new)  # at least center
       } else {
-        alpha_hat <- predict(fit_alpha, type = "response")
+        alpha_hat <- predict(fit_alpha, type = "link") ####### CHANGE HERE
         # ensure link-scale (we used identity for alpha), center for identifiability
-        alpha_hat <- alpha_hat - mean(alpha_hat)
+        #alpha_hat <- alpha_hat - mean(alpha_hat)
       }
     } else {
-      alpha_hat <- alpha_hat_new - mean(alpha_hat_new)
+      alpha_hat <- alpha_hat_new
+      #alpha_hat <- alpha_hat_new - mean(alpha_hat_new)
     }
     
     # update p
     eta <- as.numeric(as.vector(Z %*% beta_new) + alpha_hat)
     p <- plogis(eta)
+    
+    #print(beta_new)
     
     # convergence check
     if (sqrt(sum(eps_hat^2)) < tol) {
@@ -204,6 +216,7 @@ tmle_iterative <- function(dat, J.name = "J", T.name = "T", V.name="V", psi_delt
       r_mat[is.na(r_mat[, j]), j] <- 0
     }
   }
+  
   H_final <- Z - r_mat
   # estimate information matrix: I_eff_hat = mean_i [ w_final[i] * H_i %o% H_i ] where w_final = p*(1-p)
   I_eff_hat <- matrix(0, nrow = d, ncol = d)
@@ -222,8 +235,57 @@ tmle_iterative <- function(dat, J.name = "J", T.name = "T", V.name="V", psi_delt
   var_beta <- I_inv / n
   se_beta <- sqrt(diag(var_beta))
   
+  # update: Smooth beta
+  
+  if(monotone==FALSE){
+    Amat=NULL
+    beta_mono=vector(length=0)
+  }
+  
+  if(monotone==TRUE){
+    if (verbose) cat(sprintf("Smoothing beta to be monotone"))
+    
+    if(is.null(Amat)){
+    Amat <- matrix(0, nrow=length(beta), ncol=length(beta))
+    
+    # This works for B-spline *without* I(V ≤ T) intercept
+    for(i in 1:nrow(Amat)){
+      
+      if(length(beta)==2){
+        
+        Amat[1,1] = -1
+        Amat[2,2] = 1
+        
+      }else{
+      
+      if(i==1){
+        Amat[i,i] = -1
+      }else{
+        Amat[i,(i-1)] = -1
+        Amat[i,(i)] = 1
+      }
+      }
+    }
+    }else{
+      Amat = Amat
+    }
+    
+    beta_mono <- coneproj::coneA(y=beta, amat=Amat, w=1/se_beta^2)$theta[,1]
+  }
+  
+  if(monotone==TRUE){
+    
+    beta_mono = beta_mono
+    
+  }else{
+    
+    beta_mono=beta
+    
+  }
+  
   # return
-  list(beta = beta,
+  list(beta = beta_mono,
+       beta_unconstr = beta,
        se = se_beta,
        cov = var_beta,
        alpha_link = alpha_hat,
@@ -231,17 +293,66 @@ tmle_iterative <- function(dat, J.name = "J", T.name = "T", V.name="V", psi_delt
        H = H_final,
        I_eff = I_eff_hat,
        iterations = iter,
-       converged = converged)
+       converged = converged,
+       Amat = Amat,
+       basis = base$basis)
 }
 
-
-res<-tmle_iterative(dat=dat_wane_run, psi_delta = psi_d2)
-res2<-tmle_iterative(dat=dat_wane_run, psi_delta = psi_bs)
-
-try<-data.frame(A= as.numeric(Vvec <= Tvec), tau = pmax(0, Tvec-Vvec)) 
-try<-bind_cols(try, psi_bs(Tvec, Vvec))
-try$VE <- as.matrix(try) %*% c(0,0,res2$beta)
-
-ggplot(aes(x=tau, y=VE), data=try)+
-  geom_line()+
-  geom_abline(intercept=-1, slope=1)
+# # Linear Estimator
+# 
+# res<-tmle_iterative(dat=dat_wane_run, psi_delta = psi_d2, monotone=FALSE)
+# 
+# try<-data.frame(A= as.numeric(dat_wane_run$V <= dat_wane_run$T), tau = pmax(0, dat_wane_run$T-dat_wane_run$V)) 
+# try$logRR <- as.matrix(try) %*% c(res$beta)
+# try$VE <- 1-exp(as.matrix(try)[,1:(ncol(try)-1)] %*% c(res$beta))
+# 
+# ggplot(aes(x=tau, y=logRR), data=try)+
+#   geom_line()+
+#   geom_abline(intercept=-1, slope=1)
+# 
+# ggplot(aes(x=tau, y=VE), data=try)+
+#   geom_line()
+# 
+# # B-spline Estimator
+# 
+# res2<-tmle_iterative(dat=dat_wane_run, psi_delta = psi_bs, monotone=FALSE, df=8)
+# 
+# try<-data.frame(A= as.numeric(dat_wane_run$V <= dat_wane_run$T), tau = pmax(0, dat_wane_run$T-dat_wane_run$V)) 
+# try<-bind_cols(try, psi_bs(dat_wane_run$T, dat_wane_run$V, df=8))
+# try$logRR <- as.matrix(try) %*% c(0,0,res2$beta)
+# try$VE <- 1-exp(as.matrix(try)[,1:(ncol(try)-1)] %*% c(0,0,res2$beta))
+# 
+# ggplot(aes(x=tau, y=logRR), data=try)+
+#   geom_line()+
+#   geom_abline(intercept=-1, slope=1)
+# 
+# ggplot(aes(x=tau, y=VE), data=try)+
+#   geom_line()+
+#   ylim(c(0, 1))
+# 
+# attempt <- try %>% 
+#   arrange(tau) %>%
+#   distinct() %>%
+#   filter(A==1)
+# 
+# #attempt %>% dplyr::select('1','2','3','4','5','6','7','8','9')
+# 
+# Bgrid<-as.matrix(attempt %>% dplyr::select('1','2','3','4','5','6','7','8','9'))
+# fhat_grid <- Bgrid %*% res2$beta
+# Var_fhat_grid <- diag(Bgrid %*% solve(res2$I_eff) %*% t(Bgrid))
+# w_grid <- 1 / pmax(Var_fhat_grid, 1e-8)
+# 
+# #library(Iso)
+# fhat_iso_grid <- gpava(z=1:nrow(fhat_grid), y=as.numeric(fhat_grid), w = w_grid)
+# 
+# attempt$logRR_iso <- fhat_iso_grid$x
+# attempt$VE <- 1-exp(attempt$logRR_iso)
+# 
+# ggplot(aes(x=tau, y=logRR_iso), data=attempt)+
+#   geom_line()+
+#   geom_abline(intercept=-1, slope=1)
+# 
+# ggplot(aes(x=tau, y=VE), data=attempt)+
+#   geom_line()+
+#   geom_line(aes(x=tau, y=VE), data=try, linetype=2, color="red")+
+#   ylim(c(0, 1))

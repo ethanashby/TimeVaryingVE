@@ -9,7 +9,7 @@ library(copula)
 
 # Function to create survival data
 
-create_data<-function(n, p_boost, boost_assignment, post_boost_disinhibition, lambda_0_N, lambda_0_Y, init_VE, VE_wane, Tmax){
+create_data<-function(n, p_boost, boost_assignment, post_boost_disinhibition, lambda_0_N, lambda_0_Y, init_VE, VE_wane, Tmax, sd_frail){
   
   ### Simulate covariates that determine hazard
   
@@ -38,7 +38,7 @@ create_data<-function(n, p_boost, boost_assignment, post_boost_disinhibition, la
       myCop <- normalCopula(param=P2p(cor_mat), dim = 3, dispstr = "un")
       
       myMvd <- mvdc(copula=myCop, margins=c(rep("norm", 2), "unif"),
-                    paramMargins= list(list(mean=0, sd=1), list(mean=0, sd=1), list(min=0, max=Tmax + (1-p_boost))), 
+                    paramMargins= list(list(mean=0, sd=sd_frail), list(mean=0, sd=sd_frail), list(min=0, max=Tmax + (1-p_boost))), 
                     marginsIdentical=FALSE)
       
       vars <- rMvdc(n, myMvd)
@@ -54,7 +54,7 @@ create_data<-function(n, p_boost, boost_assignment, post_boost_disinhibition, la
       myCop <- normalCopula(param=P2p(cor_mat), dim = 3, dispstr = "un")
       
       myMvd <- mvdc(copula=myCop, margins=c(rep("norm", 2), "unif"),
-                    paramMargins= list(list(mean=0, sd=1), list(mean=1, sd=1), list(min=0, max=Tmax + (1-p_boost))), 
+                    paramMargins= list(list(mean=0, sd=sd_frail), list(mean=1, sd=sd_frail), list(min=0, max=Tmax + (1-p_boost))), 
                     marginsIdentical=FALSE)
       
       vars <- rMvdc(n, myMvd)
@@ -75,7 +75,7 @@ create_data<-function(n, p_boost, boost_assignment, post_boost_disinhibition, la
       myCop <- normalCopula(param=P2p(cor_mat), dim = 3, dispstr = "un")
       
       myMvd <- mvdc(copula=myCop, margins=c(rep("norm", 2), "unif"),
-                    paramMargins= list(list(mean=0, sd=1), list(mean=0, sd=1), list(min=0, max=Tmax + (1-p_boost))), 
+                    paramMargins= list(list(mean=0, sd=sd_frail), list(mean=0, sd=sd_frail), list(min=0, max=Tmax + (1-p_boost))), 
                     marginsIdentical=FALSE)
       
       vars <- rMvdc(n, myMvd)
@@ -92,7 +92,7 @@ create_data<-function(n, p_boost, boost_assignment, post_boost_disinhibition, la
       myCop <- normalCopula(param=P2p(cor_mat), dim = 3, dispstr = "un")
       
       myMvd <- mvdc(copula=myCop, margins=c(rep("norm", 2), "unif"),
-                    paramMargins= list(list(mean=0, sd=1), list(mean=1, sd=1), list(min=0, max=Tmax + (1-p_boost))), 
+                    paramMargins= list(list(mean=0, sd=sd_frail), list(mean=1, sd=sd_frail), list(min=0, max=Tmax + (1-p_boost))), 
                     marginsIdentical=FALSE)
       
       vars <- rMvdc(n, myMvd)
@@ -183,50 +183,3 @@ create_data<-function(n, p_boost, boost_assignment, post_boost_disinhibition, la
   )
   
 }
-
-# Run function under certain set of parameters
-
-L<-list(n=6000, p_boost=0.80, boost_assignment="random", post_boost_disinhibition=1, lambda_0_N=0.05, lambda_0_Y=0.08, init_VE=-1, VE_wane=1, Tmax=1)
-
-df <- create_data(n=L$n, 
-                  p_boost=L$p_boost,
-                  boost_assignment = L$boost_assignment,
-                  post_boost_disinhibition=L$post_boost_disinhibition,
-                  lambda_0_N=L$lambda_0_N, lambda_0_Y=L$lambda_0_Y, init_VE=L$init_VE, VE_wane=L$VE_wane, Tmax=L$Tmax)
-
-### Package data appropriately
-dat_N<-df$dat_N
-dat_Y_const<-df$dat_Y_const
-dat_Y_wane <- df$dat_Y_wane
-covars<-df$covars
-
-#### Analyze constant VE dataset
-
-dat_const<-data.frame(
-  id=dat_N$id,
-  N=dat_N$eventtime,
-  Delta_N=dat_N$status,
-  Y=dat_Y_const$eventtime,
-  Delta_Y=dat_Y_const$status,
-  Z=covars$Z
-)
-
-#### Analyze waning VE dataset
-
-dat_wane<-data.frame(
-  id=dat_N$id,
-  N=dat_N$eventtime,
-  Delta_N=dat_N$status,
-  Y=dat_Y_wane$eventtime,
-  Delta_Y=dat_Y_wane$status,
-  Z=covars$Z
-)
-
-dat_wane_run <- dat_wane %>%
-  filter(Delta_Y==1 | Delta_N==1) %>%
-  transmute(
-    `T` = pmin(Y, N),
-    `A` = as.numeric(Z <= T),
-    `J` = ifelse(`T`==Y, 1, 0),
-    `V` = Z
-  )
