@@ -1,49 +1,53 @@
+home_path = "/home/eashby/"
+
 library(SimEngine,
-        lib.loc=c("/home/bzhang3/Ashby_Ethan/R_lib/")) #flag
+        lib.loc=paste0(home_path, "R_lib/")) #flag
 library(parallel)
 library(tidyverse)
 library(survival)
 library(simsurv,
-        lib.loc=c("/home/bzhang3/Ashby_Ethan/R_lib/")) #flag
+        lib.loc=paste0(home_path, "R_lib/")) #flag
 library(Hmisc)
 library(coneproj,
-        lib.loc=c("/home/bzhang3/Ashby_Ethan/R_lib/")) #flag
+        lib.loc=paste0(home_path, "R_lib/")) #flag
 library(quadprog)
 library(mvtnorm)
 library(progress)
 library(copula)
 library(mgcv)
 library(splines)
-library(msm, lib.loc=c("/home/bzhang3/Ashby_Ethan/R_lib/")) #flag
+library(splines2, lib.loc=paste0(home_path, "R_lib/"))
+library(msm, lib.loc=paste0(home_path, "R_lib/")) #flag
 
-source("~/Desktop/GitHub/TimeVaryingVE/basis_f.R")
-source("~/Desktop/GitHub/TimeVaryingVE/isotone_f.R")
-source("~/Desktop/GitHub/TimeVaryingVE/create_data.R")
-source("~/Desktop/GitHub/TimeVaryingVE/TMLE_func.R")
-source("~/Desktop/GitHub/TimeVaryingVE/Sieve_func.R")
+source(paste0(home_path, "VEDebias/basis_f.R"))
+source(paste0(home_path, "VEDebias/isotone_f.R"))
+source(paste0(home_path, "VEDebias/create_data.R"))
+source(paste0(home_path, "VEDebias/TMLE_func.R"))
+source(paste0(home_path, "VEDebias/Sieve_func.R"))
 
-n_cores <- 800
+n_cores <- 600 #600
 
 SimEngine::run_on_cluster(
   
   first={
     library(SimEngine,
-            lib.loc=c("/home/bzhang3/Ashby_Ethan/R_lib/")) #flag
+            lib.loc=paste0(home_path, "R_lib/")) #flag
     library(parallel)
     library(tidyverse)
     library(survival)
     library(simsurv,
-            lib.loc=c("/home/bzhang3/Ashby_Ethan/R_lib/")) #flag
+            lib.loc=paste0(home_path, "R_lib/")) #flag
     library(Hmisc)
     library(coneproj,
-            lib.loc=c("/home/bzhang3/Ashby_Ethan/R_lib/")) #flag
+            lib.loc=paste0(home_path, "R_lib/")) #flag
     library(quadprog)
     library(mvtnorm)
     library(progress)
     library(copula)
     library(mgcv)
     library(splines)
-    library(msm, lib.loc=c("/home/bzhang3/Ashby_Ethan/R_lib/")) #flag
+    library(splines2, lib.loc=paste0(home_path, "R_lib/"))
+    library(msm, lib.loc=paste0(home_path, "R_lib/")) #flag
     
     options(future.globals.maxSize = 8000 * 1024^2)
     
@@ -56,7 +60,7 @@ SimEngine::run_on_cluster(
       boost_assignment = c("random", "vulnerable"), #is boosting status random or based on vulnerability
       post_boost_disinhibition = c(0, 1), #shift in unmeasured variables after post-boost disinhibition
       lambda_0_N = c(0.03), # time-averaged baseline hazard of off-target infection
-      lambda_0_Y = c(0.06), # time-averaged baseline hazard of COVID-19
+      lambda_0_Y = c(0.03, 0.06, 0.12), # time-averaged baseline hazard of COVID-19
       init_VE = c(-1),
       VE_wane = c(1),
       Tmax = c(1),
@@ -65,16 +69,16 @@ SimEngine::run_on_cluster(
       sd_frail = c(1, 2)
     )
     
-    #id1<-sim$levels_grid$level_id[sim$levels_grid$p_boost==0.85 & sim$levels_grid$Bmax==1]
-    #id2<-sim$levels_grid$level_id[sim$levels_grid$p_boost==1 & sim$levels_grid$Bmax==0.65]
+    #This simulation explores effect of underlying infection pressure under RCT with no disinhibition
+    #AND effect of moderate pressure under all other settings
+    id1<-sim$levels_grid$level_id[sim$levels_grid$boost_assignment=="random" & sim$levels_grid$post_boost_disinhibition==0]
+    id2<-sim$levels_grid$level_id[sim$levels_grid$lambda_0_Y==0.06]
     
-    #sim %<>% set_levels(.keep=c(id1, id2))
+    sim %<>% set_levels(.keep=unique(c(id1, id2)))
     
     sim %<>% set_script(function() {
       
       # 1) Create data
-      
-      #L<-sim$levels_grid[6,]
       
       df <- create_data(n=L$n, 
                         p_boost=L$p_boost,
@@ -217,7 +221,6 @@ SimEngine::run_on_cluster(
       const_summary$logRR_tmle_lci <- f_tmle$f_lci
       const_summary$logRR_tmle_uci <- f_tmle$f_uci
       
-      
       # C) TMLE -- Linear Estimator
       
       const_results <- const_summary %>%
@@ -228,10 +231,16 @@ SimEngine::run_on_cluster(
         mutate(tmp = gsub("_uci", "", tmp), tmp1 = gsub("_lci", "", tmp1)) %>% 
         filter(method==tmp & tmp==tmp1) %>%
         group_by(method) %>%
-        summarise(
+        dplyr::summarise(
           MSE = mean(c(VE - L$init_VE)^2),
-          coverage = mean(between(L$init_VE, LCI, UCI))
+          coverage = mean(L$init_VE >= LCI & L$init_VE <= UCI)
         )
+      
+      stats_const <- data.frame(
+        "num_Y" = sum(dat_Y_const$Delta_Y),
+        "num_N" = sum(dat_N$status),
+        "tot_inf" = sum(dat_Y_const$Delta_Y)+sum(dat_N$status),
+        "num_first_inf" = nrow(dat_const_run))
       
       gc()
       
@@ -369,10 +378,16 @@ SimEngine::run_on_cluster(
         mutate(tmp = gsub("_uci", "", tmp), tmp1 = gsub("_lci", "", tmp1)) %>% 
         filter(method==tmp & tmp==tmp1) %>%
         group_by(method) %>%
-        summarise(
+        dplyr::summarise(
           MSE = mean(c(VE - (L$init_VE + tau * L$VE_wane))^2),
-          coverage = mean(between((L$init_VE + tau * L$VE_wane), LCI, UCI))
+          coverage = mean( (L$init_VE + tau * L$VE_wane) >= LCI &  (L$init_VE + tau * L$VE_wane) <= UCI)
         )
+      
+      stats_wane <- data.frame(
+        "num_Y" = sum(dat_Y_wane$Delta_Y),
+        "num_N" = sum(dat_N$status),
+        "tot_inf" = sum(dat_Y_wane$Delta_Y)+sum(dat_N$status),
+        "num_first_inf" = nrow(dat_wane_run))
       
       gc()
       
@@ -381,7 +396,9 @@ SimEngine::run_on_cluster(
           'const_summary'= const_summary,
           'wane_summary'= wane_summary,
           'const_results' = const_results,
-          'wane_results' = wane_results
+          'wane_results' = wane_results,
+          'stats_const' = stats_const,
+          'stats_wane' = stats_wane
         ))
       )
       
@@ -392,123 +409,41 @@ SimEngine::run_on_cluster(
       seed=47,
       stop_at_error=FALSE,
       n_cores = n_cores,
-      packages = c("copula", "survival", "progress", "simsurv", "coneproj", "splines", "Hmisc", "quadprog", "mvtnorm", "tidyverse", "msm")
+      packages = c("copula", "survival", "progress", "simsurv", "coneproj", "splines", "mgcv", "Hmisc", "quadprog", "mvtnorm", "tidyverse", "msm")
     )
   },
   
   main={
     
-    source("/home/bzhang3/Ashby_Ethan/VEDebias/VEWaneF_giz.R")
-    
     library(SimEngine,
-            lib.loc=c("/home/bzhang3/Ashby_Ethan/R_lib/")) #flag
+            lib.loc=paste0(home_path, "R_lib/")) #flag
     library(parallel)
     library(tidyverse)
     library(survival)
     library(simsurv,
-            lib.loc=c("/home/bzhang3/Ashby_Ethan/R_lib/")) #flag
+            lib.loc=paste0(home_path, "R_lib/")) #flag
     library(Hmisc)
     library(coneproj,
-            lib.loc=c("/home/bzhang3/Ashby_Ethan/R_lib/")) #flag
+            lib.loc=paste0(home_path, "R_lib/")) #flag
     library(quadprog)
     library(mvtnorm)
     library(progress)
     library(copula)
-    library(msm, 
-            lib.loc=c("/home/bzhang3/Ashby_Ethan/R_lib/")) #flag
+    library(mgcv)
+    library(splines)
+    library(splines2, lib.loc=paste0(home_path, "R_lib/"))
+    library(msm, lib.loc=paste0(home_path, "R_lib/")) #flag
+    
+    source(paste0(home_path, "VEDebias/basis_f.R"))
+    source(paste0(home_path, "VEDebias/isotone_f.R"))
+    source(paste0(home_path, "VEDebias/create_data.R"))
+    source(paste0(home_path, "VEDebias/TMLE_func.R"))
+    source(paste0(home_path, "VEDebias/Sieve_func.R"))
     
     sim %<>% SimEngine::run()
   },
   
-  last = {
-    #save(sim, file="/home/bzhang3/Ashby_Ethan/VEDebias/sim_res.rds")
-  },
+  last = {},
   
   cluster_config = list(js="slurm")
 )
-
-
-
-L<-list(n=16000, p_boost=0.80, boost_assignment="vulnerable", post_boost_disinhibition=1, lambda_0_N=0.05, lambda_0_Y=0.08, init_VE=-1, VE_wane=1, Tmax=1)
-
-# Create dataset
-set.seed(4747)
-
-df <- create_data(n=L$n, 
-                  p_boost=L$p_boost,
-                  boost_assignment = L$boost_assignment,
-                  post_boost_disinhibition=L$post_boost_disinhibition,
-                  lambda_0_N=L$lambda_0_N, lambda_0_Y=L$lambda_0_Y, init_VE=L$init_VE, VE_wane=L$VE_wane, Tmax=L$Tmax)
-
-### Package data appropriately
-
-dat_N<-df$dat_N
-dat_Y_const<-df$dat_Y_const
-dat_Y_wane <- df$dat_Y_wane
-covars<-df$covars
-
-#########
-#### Analyze constant VE dataset
-#########
-
-dat_const<-data.frame(
-  id=dat_N$id,
-  N=dat_N$eventtime,
-  Delta_N=dat_N$status,
-  Y=dat_Y_const$eventtime,
-  Delta_Y=dat_Y_const$status,
-  Z=covars$Z
-)
-
-# 1) Naive Cox
-
-dat_const <- dat_const %>% mutate(
-  A = as.numeric(Z <= Y),
-  tau = pmax(0, Y - Z)
-)
-
-fit_cox_const<-coxph(Surv(Y, Delta_Y) ~ A + tt(Z),
-                     data=dat_const,
-                     tt=function(x, t, ...){I(x <= t) * pmax(0, t-x)})
-
-#coef(fit_cox_const)
-
-# 2) TMLE -- Linear Estimator
-
-dat_const_run <- dat_const %>%
-  filter(Delta_Y==1 | Delta_N==1) %>%
-  transmute(
-    `T` = pmin(Y, N),
-    `A` = as.numeric(Z <= T),
-    `J` = ifelse(`T`==Y, 1, 0),
-    `V` = Z
-  )
-
-const_summary <- data.frame(
-  A = rep(1, 101),
-  tau = seq(0, 1, by=0.01)
-)
-
-
-# Cox summary
-
-const_summary$logRR_cox_est <- as.matrix(const_summary) %*% coef(fit_cox_const)
-ses_cox <- apply(as.matrix(const_summary[,1:2]), MARGIN=1, FUN=function(x){sqrt(t(x) %*% (vcov(fit_cox_const) %*% x))})
-const_summary$logRR_cox_lci <- const_summary$logRR_cox_est - qnorm(0.975) * ses_cox
-const_summary$logRR_cox_uci <- const_summary$logRR_cox_est + qnorm(0.975) * ses_cox
-
-# Sieve summary
-
-res_sieve_const<-sieve_partially_linear_logistic(dat=dat_const_run, psi_delta = psi_d2, monotone=TRUE)
-
-const_summary$logRR_sieve_est <- as.matrix(const_summary[,1:2]) %*% res_sieve_const$beta
-
-CI <- monotone_CI_MC(beta=res_sieve_const$beta_unconstr, 
-                     vcov=res_sieve_const$cov, 
-                     Amat=res_sieve_const$Amat, 
-                     w = 1/(res_sieve_const$se)^2, 
-                     grid = as.matrix(const_summary[,1:2]),
-                     M=10000)
-
-const_summary$logRR_sieve_lci <- CI[,1]
-const_summary$logRR_sieve_uci <- CI[,2]

@@ -1,7 +1,7 @@
 ################
 # Isotonic time-varying VE calibration
-
-library(coneproj)
+# Dependencies: coneproj
+#library(coneproj)
 
 isotone_f <- function(beta_hat, vcov, grid, indices_to_monotonize, Amat){
   

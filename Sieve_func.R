@@ -2,10 +2,10 @@
 # Sieve Estimator For VE waning
 ##################################################################
 
-library(tidyverse)
-library(mgcv)
-library(splines)
-library(coneproj)
+# library(tidyverse)
+# library(mgcv)
+# library(splines)
+# library(coneproj)
 
 # psi_d2 <- function(Tvec, Vvec) {
 #   # Vmat: n x d

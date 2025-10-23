@@ -18,7 +18,16 @@ source("~/Desktop/GitHub/TimeVaryingVE/Sieve_func.R")
 
 # Run function under certain set of parameters
 
-L<-list(n=16000, p_boost=0.80, boost_assignment="vulnerable", post_boost_disinhibition=1, lambda_0_N=0.05, lambda_0_Y=0.08, init_VE=-1, VE_wane=1, Tmax=1)
+L<-list(n=10000, 
+        p_boost=0.80, 
+        boost_assignment="vulnerable", 
+        post_boost_disinhibition=1, 
+        lambda_0_N=0.05, 
+        lambda_0_Y=0.08, 
+        init_VE=-1, 
+        VE_wane=1, 
+        Tmax=1,
+        sd_frail = 1)
 
 # Create dataset
 set.seed(4747)
@@ -27,7 +36,12 @@ df <- create_data(n=L$n,
                   p_boost=L$p_boost,
                   boost_assignment = L$boost_assignment,
                   post_boost_disinhibition=L$post_boost_disinhibition,
-                  lambda_0_N=L$lambda_0_N, lambda_0_Y=L$lambda_0_Y, init_VE=L$init_VE, VE_wane=L$VE_wane, Tmax=L$Tmax)
+                  lambda_0_N=L$lambda_0_N, 
+                  lambda_0_Y=L$lambda_0_Y, 
+                  init_VE=L$init_VE, 
+                  VE_wane=L$VE_wane, 
+                  Tmax=L$Tmax,
+                  sd_frail = L$sd_frail)
 
 ### Package data appropriately
 
@@ -51,14 +65,58 @@ dat_const<-data.frame(
 
 # 1) Naive Cox
 
-dat_const <- dat_const %>% mutate(
-  A = as.numeric(Z <= Y),
-  tau = pmax(0, Y - Z)
+# dat_const <- dat_const %>% mutate(
+#   A = as.numeric(Z <= Y),
+#   tau = pmax(0, Y - Z)
+# )
+# 
+# fit_cox_const<-coxph(Surv(Y, Delta_Y) ~ A + tt(Z),
+#       data=dat_const,
+#       tt=function(x, t, ...){I(x <= t) * pmax(0, t-x)})
+
+d_long<-tmerge(
+  data1 = dat_Y_const, 
+  data2 = dat_Y_const,
+  id = id, 
+  tstop = Y,
+  event = event(dat_Y_const$Y, dat_Y_const$Delta_Y)
 )
 
-fit_cox_const<-coxph(Surv(Y, Delta_Y) ~ A + tt(Z),
-      data=dat_const,
-      tt=function(x, t, ...){I(x <= t) * pmax(0, t-x)})
+jumps<-data.frame(
+  id=covars$id,
+  time = covars$Z
+)
+
+d_long<-tmerge(
+  d_long, 
+  jumps,
+  id = id, 
+  jump = tdc(time)
+)
+
+d_long<-left_join(d_long, covars %>% dplyr::select(id, Z), by="id")
+
+cx<-coxph(Surv(tstart, tstop, event) ~ jump + tt(V), 
+          tt = function(tvacc, t, ...) {pmax(0, t - tvacc)}, data=d_long)
+
+# Remove large components
+cx$y <- NULL         # Response variable (redundant if you have original data)
+cx$linear.predictors <- NULL  # Only needed for predictions
+cx$residuals <- NULL  # Drop if not using residual diagnostics
+cx$weights <- NULL    # Remove case weights if not needed
+cx$model <- NULL      # Original data used for fitting
+cx$na.action <- NULL  # Drop NA action info
+# If not using robust variance, remove x and means
+cx$x <- NULL
+cx$means <- NULL
+# Further compression
+cx$call <- NULL  # If you don’t need to reconstruct the call
+cx$terms <- NULL  # If you’re not doing post-hoc modifications
+
+const_summary$logRR_cox_est <- as.matrix(const_summary) %*% coef(cx)
+ses_cox <- apply(as.matrix(const_summary[,1:2]), MARGIN=1, FUN=function(x){sqrt(t(x) %*% (vcov(cx) %*% x))})
+const_summary$logRR_cox_lci <- const_summary$logRR_cox_est - qnorm(0.975) * ses_cox
+const_summary$logRR_cox_uci <- const_summary$logRR_cox_est + qnorm(0.975) * ses_cox
 
 #coef(fit_cox_const)
 

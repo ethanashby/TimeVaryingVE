@@ -1,18 +1,12 @@
 # Ready-to-run iterative TMLE for the semiparametric logistic model
 # Dependencies: mgcv
-if(!requireNamespace("mgcv", quietly=TRUE)) install.packages("mgcv")
-library(tidyverse)
-library(mgcv)
-library(splines)
-library(coneproj)
-library(splines2)
 
 ####
 # Useful Basis functions
 
 # Create linear basis function and predict method
 
-source("~/Desktop/GitHub/TimeVaryingVE/basis_f.R")
+#source("~/Desktop/GitHub/TimeVaryingVE/basis_f.R")
 
 tmle_iterative <- function(dat, J.name = "J", T.name = "T", V.early.name=NULL, V.name="V", psi_delta, maxit = 500, tol = 1e-6,
                            smooth_r = TRUE, smooth_alpha = TRUE, verbose = TRUE, monotone=TRUE, Amat=NULL, ...) {
