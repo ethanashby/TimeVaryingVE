@@ -15,22 +15,23 @@ library(patchwork)
 source("~/Desktop/GitHub/TimeVaryingVE/create_data.R")
 source("~/Desktop/GitHub/TimeVaryingVE/TMLE_func.R")
 source("~/Desktop/GitHub/TimeVaryingVE/Sieve_func.R")
+source("~/Desktop/GitHub/TimeVaryingVE/isotone_f.R")
 
 # Run function under certain set of parameters
 
 L<-list(n=10000, 
-        p_boost=0.80, 
-        boost_assignment="vulnerable", 
-        post_boost_disinhibition=1, 
-        lambda_0_N=0.05, 
-        lambda_0_Y=0.08, 
+        p_boost=0.85, 
+        boost_assignment="random", 
+        post_boost_disinhibition=0, 
+        lambda_0_N=0.08, 
+        lambda_0_Y=0.16, 
         init_VE=-1, 
         VE_wane=1, 
         Tmax=1,
-        sd_frail = 1)
+        sd_frail = 2.5)
 
 # Create dataset
-set.seed(4747)
+set.seed(4743)
 
 df <- create_data(n=L$n, 
                   p_boost=L$p_boost,
@@ -74,6 +75,8 @@ dat_const<-data.frame(
 #       data=dat_const,
 #       tt=function(x, t, ...){I(x <= t) * pmax(0, t-x)})
 
+dat_Y_const <- dat_Y_const %>% rename(Y=eventtime, Delta_Y = status)
+
 d_long<-tmerge(
   data1 = dat_Y_const, 
   data2 = dat_Y_const,
@@ -94,7 +97,7 @@ d_long<-tmerge(
   jump = tdc(time)
 )
 
-d_long<-left_join(d_long, covars %>% dplyr::select(id, Z), by="id")
+d_long<-left_join(d_long, covars %>% dplyr::select(id, Z) %>% rename(V=Z), by="id")
 
 cx<-coxph(Surv(tstart, tstop, event) ~ jump + tt(V), 
           tt = function(tvacc, t, ...) {pmax(0, t - tvacc)}, data=d_long)
@@ -112,6 +115,11 @@ cx$means <- NULL
 # Further compression
 cx$call <- NULL  # If you don’t need to reconstruct the call
 cx$terms <- NULL  # If you’re not doing post-hoc modifications
+
+const_summary <- data.frame(
+  A = rep(1, 101),
+  tau = seq(0, 1, by=0.01)
+)
 
 const_summary$logRR_cox_est <- as.matrix(const_summary) %*% coef(cx)
 ses_cox <- apply(as.matrix(const_summary[,1:2]), MARGIN=1, FUN=function(x){sqrt(t(x) %*% (vcov(cx) %*% x))})
@@ -131,49 +139,41 @@ dat_const_run <- dat_const %>%
     `V` = Z
   )
 
-const_summary <- data.frame(
-  A = rep(1, 101),
-  tau = seq(0, 1, by=0.01)
-)
-
-
-# Cox summary
-
-const_summary$logRR_cox_est <- as.matrix(const_summary) %*% coef(fit_cox_const)
-ses_cox <- apply(as.matrix(const_summary[,1:2]), MARGIN=1, FUN=function(x){sqrt(t(x) %*% (vcov(fit_cox_const) %*% x))})
-const_summary$logRR_cox_lci <- const_summary$logRR_cox_est - qnorm(0.975) * ses_cox
-const_summary$logRR_cox_uci <- const_summary$logRR_cox_est + qnorm(0.975) * ses_cox
-
 # Sieve summary
 
-res_sieve_const<-sieve_partially_linear_logistic(dat=dat_const_run, psi_delta = psi_d2, monotone=TRUE)
+res_sieve_const<-sieve_partially_linear_logistic(dat=dat_const_run, psi_delta = psi_d2, monotone=FALSE)
 
-const_summary$logRR_sieve_est <- as.matrix(const_summary[,1:2]) %*% res_sieve_const$beta
+Amat <- matrix(0, nrow=nrow(const_summary)-1, ncol=nrow(const_summary))
 
-CI <- monotone_CI_MC(beta=res_sieve_const$beta_unconstr, 
-                     vcov=res_sieve_const$cov, 
-                     Amat=res_sieve_const$Amat, 
-                     w = 1/(res_sieve_const$se)^2, 
-                     grid = as.matrix(const_summary[,1:2]),
-                     M=10000)
+for(i in 1:(nrow(const_summary)-1)){
+  
+  Amat[i,i] = -1
+  Amat[i,(i+1)] = 1
+}
 
-const_summary$logRR_sieve_lci <- CI[,1]
-const_summary$logRR_sieve_uci <- CI[,2]
+fit<-isotone_f(res_sieve_const$beta, 
+          vcov = res_sieve_const$cov, 
+          grid = as.matrix(const_summary[,1:2]), 
+          indices_to_monotonize = 1:nrow(const_summary), 
+          Amat = Amat)
+
+const_summary$logRR_sieve_est <- fit$f_mono
+const_summary$logRR_sieve_lci <- fit$f_lci
+const_summary$logRR_sieve_uci <- fit$f_uci
 
 # TMLE summary
 
-res_tmle_const<-tmle_iterative(dat=dat_const_run, psi_delta = psi_d2, monotone=TRUE)
+res_tmle_const<-tmle_iterative(dat=dat_const_run, psi_delta = psi_d2, monotone=FALSE)
 
-const_summary$logRR_TMLE_est <- as.matrix(const_summary[,1:2]) %*% res_tmle_const$beta
+fit<-isotone_f(res_tmle_const$beta, 
+               vcov = res_tmle_const$cov, 
+               grid = as.matrix(const_summary[,1:2]), 
+               indices_to_monotonize = 1:nrow(const_summary), 
+               Amat = Amat)
 
-CI <- monotone_CI_MC(beta=res_tmle_const$beta_unconstr, 
-                     vcov=res_tmle_const$cov, 
-                     Amat=res_tmle_const$Amat, 
-                     w = 1/(res_tmle_const$se)^2, grid = as.matrix(const_summary[,1:2]),
-                     M=10000)
-
-const_summary$logRR_TMLE_lci <- CI[,1]
-const_summary$logRR_TMLE_uci <- CI[,2]
+const_summary$logRR_tmle_est <- fit$f_mono
+const_summary$logRR_tmle_lci <- fit$f_lci
+const_summary$logRR_tmle_uci <- fit$f_uci
 
 # Truth
 
@@ -188,9 +188,9 @@ const_summary <- const_summary %>%
                         "logRR_sieve_est", 
                         "logRR_sieve_lci",
                         "logRR_sieve_uci",
-                        "logRR_TMLE_est", 
-                        "logRR_TMLE_lci",
-                        "logRR_TMLE_uci",
+                        "logRR_tmle_est", 
+                        "logRR_tmle_lci",
+                        "logRR_tmle_uci",
                         "logRR_truth_est"), 
                names_prefix = "logRR_", 
                names_sep = "_",
@@ -203,7 +203,8 @@ const_summary <- const_summary %>%
     names_from = feature, values_from=c(VE, logRR_value)
   )
 
-p1 <- ggplot(const_summary)+
+p1 <- const_summary %>%
+  ggplot(.)+
   geom_jitter(aes(x=tau, y=-0.5, color=Event), width=0, height=0.25, data=dat_const_run %>% 
                 mutate(tau = pmax(0, T-V),
                        Event = factor(J, levels=c(0, 1), labels=c("Irrelevant", "Preventable"))), alpha=0.3)+
@@ -214,14 +215,15 @@ p1 <- ggplot(const_summary)+
   scale_color_manual(values = c("red", "purple", "blue", "black"))+
   scale_fill_manual(values = c("red", "purple", "blue", "black"))+
   scale_linetype_manual(values = c(1, 1, 1, 2))+
-  ylim(c(-0.75, 1))+
+  scale_y_continuous(labels=scales::percent)+
+  coord_cartesian(ylim = c(-0.75, 1))+
   theme_minimal()+
   labs(title = "Constant VE (63%)", 
        #caption = "n=16,000\nBoosting confounded by susceptibility\nPost-boost behavioral disinhibition",
        x= "Time since vaccination", y="Vaccine Efficacy (VE; 1-HR)")
 
 #########
-#### Analyze constant VE dataset
+#### Analyze waning VE dataset
 #########
 
 dat_wane<-data.frame(
@@ -235,16 +237,56 @@ dat_wane<-data.frame(
 
 # 1) Naive Cox
 
-dat_wane <- dat_wane %>% mutate(
-  A = as.numeric(Z <= Y),
-  tau = pmax(0, Y - Z)
+dat_Y_wane <- dat_Y_wane %>% rename(Y=eventtime, Delta_Y = status)
+
+d_long<-tmerge(
+  data1 = dat_Y_wane, 
+  data2 = dat_Y_wane,
+  id = id, 
+  tstop = Y,
+  event = event(dat_Y_wane$Y, dat_Y_wane$Delta_Y)
 )
 
-fit_cox_wane<-coxph(Surv(Y, Delta_Y) ~ A + tt(Z),
-                     data=dat_wane,
-                     tt=function(x, t, ...){I(x <= t) * pmax(0, t-x)})
+jumps<-data.frame(
+  id=covars$id,
+  time = covars$Z
+)
 
-#coef(fit_cox_const)
+d_long<-tmerge(
+  d_long, 
+  jumps,
+  id = id, 
+  jump = tdc(time)
+)
+
+d_long<-left_join(d_long, covars %>% dplyr::select(id, Z) %>% rename(V=Z), by="id")
+
+cx<-coxph(Surv(tstart, tstop, event) ~ jump + tt(V), 
+          tt = function(tvacc, t, ...) {pmax(0, t - tvacc)}, data=d_long)
+
+# Remove large components
+cx$y <- NULL         # Response variable (redundant if you have original data)
+cx$linear.predictors <- NULL  # Only needed for predictions
+cx$residuals <- NULL  # Drop if not using residual diagnostics
+cx$weights <- NULL    # Remove case weights if not needed
+cx$model <- NULL      # Original data used for fitting
+cx$na.action <- NULL  # Drop NA action info
+# If not using robust variance, remove x and means
+cx$x <- NULL
+cx$means <- NULL
+# Further compression
+cx$call <- NULL  # If you don’t need to reconstruct the call
+cx$terms <- NULL  # If you’re not doing post-hoc modifications
+
+wane_summary <- data.frame(
+  A = rep(1, 101),
+  tau = seq(0, 1, by=0.01)
+)
+
+wane_summary$logRR_cox_est <- as.matrix(wane_summary) %*% coef(cx)
+ses_cox <- apply(as.matrix(wane_summary[,1:2]), MARGIN=1, FUN=function(x){sqrt(t(x) %*% (vcov(cx) %*% x))})
+wane_summary$logRR_cox_lci <- wane_summary$logRR_cox_est - qnorm(0.975) * ses_cox
+wane_summary$logRR_cox_uci <- wane_summary$logRR_cox_est + qnorm(0.975) * ses_cox
 
 # 2) TMLE -- Linear Estimator
 
@@ -257,53 +299,46 @@ dat_wane_run <- dat_wane %>%
     `V` = Z
   )
 
-wane_summary <- data.frame(
-  A = rep(1, 101),
-  tau = seq(0, 1, by=0.01)
-)
-
-
-# Cox summary
-
-wane_summary$logRR_cox_est <- as.matrix(wane_summary) %*% coef(fit_cox_wane)
-ses_cox <- apply(as.matrix(wane_summary[,1:2]), MARGIN=1, FUN=function(x){sqrt(t(x) %*% (vcov(fit_cox_wane) %*% x))})
-wane_summary$logRR_cox_lci <- wane_summary$logRR_cox_est - qnorm(0.975) * ses_cox
-wane_summary$logRR_cox_uci <- wane_summary$logRR_cox_est + qnorm(0.975) * ses_cox
-
 # Sieve summary
 
-res_sieve_wane<-sieve_partially_linear_logistic(dat=dat_wane_run, psi_delta = psi_d2, monotone=TRUE)
+res_sieve_wane<-sieve_partially_linear_logistic(dat=dat_wane_run, psi_delta = psi_d2, monotone=FALSE)
 
-wane_summary$logRR_sieve_est <- as.matrix(wane_summary[,1:2]) %*% res_sieve_wane$beta
+Amat <- matrix(0, nrow=nrow(wane_summary)-1, ncol=nrow(wane_summary))
 
-CI <- monotone_CI_MC(beta=res_sieve_wane$beta_unconstr, 
-                     vcov=res_sieve_wane$cov, 
-                     Amat=res_sieve_wane$Amat, 
-                     w = 1/(res_sieve_wane$se)^2, 
-                     grid = as.matrix(wane_summary[,1:2]),
-                     M=10000)
+for(i in 1:(nrow(wane_summary)-1)){
+  
+  Amat[i,i] = -1
+  Amat[i,(i+1)] = 1
+}
 
-wane_summary$logRR_sieve_lci <- CI[,1]
-wane_summary$logRR_sieve_uci <- CI[,2]
+fit<-isotone_f(res_sieve_wane$beta, 
+               vcov = res_sieve_wane$cov, 
+               grid = as.matrix(wane_summary[,1:2]), 
+               indices_to_monotonize = 1:nrow(wane_summary), 
+               Amat = Amat)
+
+wane_summary$logRR_sieve_est <- fit$f_mono
+wane_summary$logRR_sieve_lci <- fit$f_lci
+wane_summary$logRR_sieve_uci <- fit$f_uci
 
 # TMLE summary
 
-res_tmle_wane<-tmle_iterative(dat=dat_wane_run, psi_delta = psi_d2, monotone=TRUE)
+res_tmle_wane<-tmle_iterative(dat=dat_wane_run, psi_delta = psi_d2, monotone=FALSE)
 
-wane_summary$logRR_TMLE_est <- as.matrix(wane_summary[,1:2]) %*% res_tmle_wane$beta
+fit<-isotone_f(res_tmle_wane$beta, 
+               vcov = res_tmle_wane$cov, 
+               grid = as.matrix(wane_summary[,1:2]), 
+               indices_to_monotonize = 1:nrow(wane_summary), 
+               Amat = Amat)
 
-CI <- monotone_CI_MC(beta=res_tmle_wane$beta_unconstr, 
-                     vcov=res_tmle_wane$cov, 
-                     Amat=res_tmle_wane$Amat, 
-                     w = 1/(res_tmle_wane$se)^2, grid = as.matrix(wane_summary[,1:2]),
-                     M=10000)
-
-wane_summary$logRR_TMLE_lci <- CI[,1]
-wane_summary$logRR_TMLE_uci <- CI[,2]
+wane_summary$logRR_tmle_est <- fit$f_mono
+wane_summary$logRR_tmle_lci <- fit$f_lci
+wane_summary$logRR_tmle_uci <- fit$f_uci
 
 # Truth
 
-wane_summary$logRR_truth_est <- seq(-1, 0, by=0.01)
+wane_summary$logRR_truth_est <- rep(-1, 101) + seq(0,1,0.01)
+
 
 # Summarize results
 
@@ -314,9 +349,9 @@ wane_summary <- wane_summary %>%
                         "logRR_sieve_est", 
                         "logRR_sieve_lci",
                         "logRR_sieve_uci",
-                        "logRR_TMLE_est", 
-                        "logRR_TMLE_lci",
-                        "logRR_TMLE_uci",
+                        "logRR_tmle_est", 
+                        "logRR_tmle_lci",
+                        "logRR_tmle_uci",
                         "logRR_truth_est"), 
                names_prefix = "logRR_", 
                names_sep = "_",
@@ -340,13 +375,14 @@ p2 <- ggplot(wane_summary)+
   scale_color_manual(values = c("red", "purple", "blue", "black"))+
   scale_fill_manual(values = c("red", "purple", "blue", "black"))+
   scale_linetype_manual(values = c(1, 1, 1, 2))+
-  ylim(c(-0.75, 1))+
+  coord_cartesian(ylim=c(-0.75, 1))+
+  scale_y_continuous(labels=scales::percent)+
   theme_minimal()+
   labs(title = "(Log) Linear Waning VE (63% -> 0%)", 
        #caption = "n=16,000\nBoosting confounded by susceptibility\nPost-boost behavioral disinhibition",
        x= "Time since vaccination", y="Vaccine Efficacy (VE; 1-HR)")
 
-pdf("~/Desktop/VE_vignette.pdf", width=9, height=6)
+pdf("~/Desktop/VE_vignette_dos.pdf", width=9, height=6)
 p1+ theme(plot.caption = element_text(hjust = 0), plot.subtitle = element_text(size=20),
           axis.title = element_text(size=18),
           legend.title=element_text(size=16), 

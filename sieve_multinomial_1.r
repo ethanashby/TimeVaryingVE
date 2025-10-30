@@ -28,7 +28,7 @@ psi_bs_early <- function(Tvec, Vvec, Vvec_early, df, left_knot = 0){
   
 }
 
-sieve_multinomial_EM <- function(dat, J.name="J", V.name="V", V.early.name=NULL, T.name="T", 
+sieve_multinomial <- function(dat, J.name="J", V.name="V", V.early.name=NULL, T.name="T", 
                               psi_delta, verbose=TRUE, monotone=FALSE, Amat=NULL, maxiter=50, tol=1E-6, calc_mixture = TRUE, pk_names = NULL, ...){
   
   # J.name="J" ; T.name="T" ; V.name="V"; V.early.name="V_early"

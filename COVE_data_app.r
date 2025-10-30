@@ -16,6 +16,7 @@ omicron_dt = dmy("15DEC2021")
 
 source("~/Desktop/GitHub/TimeVaryingVE/Sieve_func.R")
 source("~/Desktop/GitHub/TimeVaryingVE/TMLE_func.R")
+source("~/Desktop/GitHub/TimeVaryingVE/basis_f.R")
 source("~/Desktop/GitHub/TimeVaryingVE/isotone_f.R")
 
 #########
@@ -32,7 +33,7 @@ biofire<-read.csv("/Volumes/trials/covpn/p3001/analysis/openlabel/adata/abiofire
 pe<-fread("/Volumes/trials/covpn/p3001/analysis/openlabel/adata/P3001_BlindedPhasePartABC_PrimaryEfficacyData.csv", header = TRUE)
 
 #variant data
-GISAID <- read.table("~/Desktop/Biofire analysis/pango/gisaid_variants_statistics_tsv_2024_07_13_2044/gisaid_variants_statistics.tsv", sep = "\t", header=TRUE)
+GISAID <- read.table("~/Desktop/AJE Paper/Biofire analysis/pango/gisaid_variants_statistics_tsv_2024_07_13_2044/gisaid_variants_statistics.tsv", sep = "\t", header=TRUE)
 
 # create dataset `oracle` that contains key study period start and end dates
 
@@ -833,7 +834,10 @@ comp_risk=events %>% dplyr::select(tstop, Xstart_early, Xstart_full, type) %>%
 comp_risk$p_Delta <- 1-predict(fit_GISAID, data.frame(start = comp_risk$T), type="response")
 comp_risk$p_Omicron <- predict(fit_GISAID, data.frame(start = comp_risk$T), type="response")
 
-res_comprisk<-sieve_multinomial_EM(dat=comp_risk, 
+source("~/Desktop/GitHub/TimeVaryingVE/sieve_multinomial_1.r")
+source("~/Desktop/GitHub/TimeVaryingVE/multinomial_TMLE.r")
+
+res_comprisk_sieve<-sieve_multinomial(dat=comp_risk, 
                                    V.early.name = "V_early", 
                                    psi_delta = psi_d2_early, 
                                    monotone = FALSE,
@@ -843,6 +847,25 @@ res_comprisk<-sieve_multinomial_EM(dat=comp_risk,
                                    calc_mixture = FALSE, 
                                    pk_names = "p_Omicron")
 
+res_comprisk_TMLE <- tmle_multinomial(dat = comp_risk %>% mutate(
+                                          S = J,
+                                          J = ifelse(J>0, 1, 0)), 
+                                      psi_delta = psi_d2_early, 
+                                      m = 2, 
+                                      p_s_fun = predict_GISAID, 
+                                      kernel_shape = "epanechnikov", 
+                                      automatic_bw = FALSE)
+
+# var_f = diag((grid[,2:4] %*% list_out$var_beta1) %*% t(grid[,2:4]))
+# 
+# out<-data.frame(t=grid[,1], 
+#                 VE=grid[,2:4] %*% beta[1:3], 
+#                 VE_lci = (grid[,2:4] %*% beta[1:3]) + qnorm(0.975) * sqrt(var_f),
+#                 VE_uci = (grid[,2:4] %*% beta[1:3]) - qnorm(0.975) * sqrt(var_f))
+# 
+# out$VE<-1-exp(out$VE)
+# out$VE_lci<-1-exp(out$VE_lci)
+# out$VE_uci<-1-exp(out$VE_uci)
 
 # Collect results
 
@@ -858,7 +881,7 @@ grid_delta<-cbind(
   c(rep(1, length(times_pre)), rep(0, length(times_post))),
   c(rep(0, length(times_pre)), rep(1, length(times_post))),
   rbind(matrix(0, nrow=length(times_pre), ncol=1),
-        predict(res_comprisk$basis, times_post))
+        predict(res_comprisk_sieve$basis, times_post))
 )
 
 Amat = matrix(0, nrow = length(which(grid_delta[,1]==0))-1, ncol= length(which(grid_delta[,1]==0)))
@@ -870,19 +893,26 @@ for(i in 1:nrow(Amat)){
   
 }
 
-f_delta <- isotone_f(res_comprisk$beta_1, 
-                       vcov = res_comprisk$cov[1:3, 1:3], 
+f_delta_sieve <- isotone_f(res_comprisk_sieve$beta_1, 
+                       vcov = res_comprisk_sieve$cov[1:3, 1:3], 
                        grid = grid_delta, 
                        indices_to_monotonize = which(grid_delta[,1]==0),
                        Amat = Amat
 )
 
+f_delta_tmle <- isotone_f(res_comprisk_TMLE$beta[1:3], 
+                     vcov = res_comprisk_TMLE$var_beta1, 
+                     grid = grid_delta, 
+                     indices_to_monotonize = which(grid_delta[,1]==0),
+                     Amat = Amat
+)
+
 delta_out<-data.frame(
-  t = rep(times, 1),
-  type = rep(c("SLR (Sieve)"), each=length(times)),
-  est= pmax(1-exp(c(f_delta$f_mono)), 0),
-  LCI=pmax(1-exp(c(f_delta$f_uci)), 0), 
-  UCI=pmin(1-exp(c(f_delta$f_lci)), 1))
+  t = rep(times, 2),
+  type = rep(c("SLR (Sieve)", "SLR (TMLE)"), each=length(times)),
+  est= pmax(1-exp(c(f_delta_sieve$f_mono, f_delta_tmle$f_mono)), 0),
+  LCI=pmax(1-exp(c(f_delta_sieve$f_uci, f_delta_tmle$f_uci)), 0), 
+  UCI=pmin(1-exp(c(f_delta_sieve$f_lci, f_delta_tmle$f_lci)), 1))
 
 step_size=0.25
 times_pre = seq(0, 14-step_size, by=step_size)
@@ -893,7 +923,7 @@ grid_omicron<-cbind(
   c(rep(1, length(times_pre)), rep(0, length(times_post))),
   c(rep(0, length(times_pre)), rep(1, length(times_post))),
   rbind(matrix(0, nrow=length(times_pre), ncol=1),
-        predict(res_comprisk$basis, times_post))
+        predict(res_comprisk_sieve$basis, times_post))
 )
 
 Amat = matrix(0, nrow = length(which(grid_omicron[,1]==0))-1, ncol= length(which(grid_omicron[,1]==0)))
@@ -905,19 +935,26 @@ for(i in 1:nrow(Amat)){
   
 }
 
-f_omicron <- isotone_f(res_comprisk$beta_2, 
-                    vcov = res_comprisk$cov[4:6, 4:6], 
-                    grid = grid_omicron, 
-                    indices_to_monotonize = which(grid_omicron[,1]==0),
-                    Amat = Amat
+f_omicron_sieve <- isotone_f(res_comprisk_sieve$beta_2, 
+                           vcov = res_comprisk_sieve$cov[4:6, 4:6], 
+                           grid = grid_omicron, 
+                           indices_to_monotonize = which(grid_omicron[,1]==0),
+                           Amat = Amat
+)
+
+f_omicron_tmle <- isotone_f(res_comprisk_TMLE$beta[4:6], 
+                          vcov = res_comprisk_TMLE$var_beta2, 
+                          grid = grid_omicron, 
+                          indices_to_monotonize = which(grid_omicron[,1]==0),
+                          Amat = Amat
 )
 
 omicron_out<-data.frame(
-  t = rep(times, 1),
-  type = rep(c("SLR (Sieve)"), each=length(times)),
-  est= pmax(1-exp(c(f_omicron$f_mono)), 0),
-  LCI=pmax(1-exp(c(f_omicron$f_uci)), 0), 
-  UCI=pmin(1-exp(c(f_omicron$f_lci)), 1))
+  t = rep(times, 2),
+  type = rep(c("SLR (Sieve)", "SLR (TMLE)"), each=length(times)),
+  est= 1-exp(c(f_omicron_sieve$f_mono, f_omicron_tmle$f_mono)),
+  LCI= 1-exp(c(f_omicron_sieve$f_uci, f_omicron_tmle$f_uci)), 
+  UCI= 1-exp(c(f_omicron_sieve$f_lci, f_omicron_tmle$f_lci)))
 
 p1 <- bind_rows(
   res_delta_cox %>% 
@@ -998,6 +1035,10 @@ p2 <- bind_rows(
 pdf("~/Desktop/VE_fig_2_LIN.pdf", width=9, height=4.5)
 p1+p2+ plot_layout(guides="collect") & theme(legend.position="bottom")
 dev.off()
+
+####################################################################################
+# Extra
+####################################################################################
 
 ########
 # Process results of model fit
