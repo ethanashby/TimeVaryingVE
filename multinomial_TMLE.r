@@ -10,6 +10,14 @@ library(mgcv)
 # tmle_multinomial.R
 library(splines)
 
+safe_clamp <- function(x, lower = 1E-10, upper = 1-1E-10) {
+  if (any(lower > upper)) stop("lower must be ≤ upper")
+  out <- x
+  out[!is.na(x) & x < lower] <- lower
+  out[!is.na(x) & x > upper] <- upper
+  out
+}
+
 tmle_multinomial <- function(dat,
                              T.name="T",
                              J.name="J",
@@ -18,6 +26,7 @@ tmle_multinomial <- function(dat,
                              S.name = "S",
                              psi_delta,
                              m = 2,
+                             verbose=TRUE,
                              init_beta = NULL,
                              p_s_fun = predict_GISAID,
                              max_iter = 100,
