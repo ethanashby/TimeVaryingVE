@@ -1,29 +1,38 @@
-##################################################################
-# Generate test dataset to evaluate time-varying VE functions
-##################################################################
+#' create_data
+#'
+#' Function used to generate survival data consistent with RCTs/observational studies measuring vaccine-preventable and irrelevant infections/
+#' 
+#' The following code generates data under two scenarios (i) a constant VE setting and (ii) a linearly waning VE setting on the log hazard ratio scale.
+#' Survival outcomes (for both vaccine-preventable and vaccine-irrelevant pathogens) are generated from hazard frailty models.
+#' 
+#' @param n numeric, number of participants to simulate data for
+#' @param p_boost numeric, probability of vaccination at some point during study
+#' @param boost_assignment character, "random" if vaccination date is not associated with risk, "vulnerable" if to prioritize vaccinating at-risk persons early
+#' @param post_boost_disinhibition binary, 0 if no increase in risk post-boost, 1 if increase in risk post-boost
+#' @param lambda_0_N numeric, time-averaged baseline hazard of vaccine-irrelevant infection
+#' @param lambda_0_Y numeric, time-averaged baseline hazard of vaccine-preventable infection
+#' @param init_VE numeric, log(HR) of infection just after vaccination
+#' @param VE_wane numeric, how log(HR) varies in time-since-vaccination
+#' @param Tmax numeric, duration of study
+#' @param sd_frail numeric, level of risk heterogeneity, defined as standard deviation of the lognormal frailty variable
+#' @return list containing elements "covars" with summary info (including id, frailties, and vaccination status), "dat_N" containing vaccine-irrelevant infetcion data, "dat_Y_const" containing vaccine-preventable infection data with constant VE, and "dat_Y_wane" containing vaccine-preventable infection data with waning VE. 
+#' @examples
+#' create_data(n=100, p_boost=0.70, boost_assignment="vulnerable", post_boost_disinhibition=1, lambda_0_N=0.06, lambda_0_Y=0.08, init_VE=1.3, VE_wane = -0.5, Tmax=1, sd_frail=1.3)
+#' @export
 
-# Dependencies
-library(tidyverse)
-library(simsurv)
-library(copula)
-
-# Function to create survival data
-
-create_data<-function(n, p_boost, boost_assignment, post_boost_disinhibition, lambda_0_N, lambda_0_Y, init_VE, VE_wane, Tmax, sd_frail){
+create_data<-function(n, 
+                      p_boost, 
+                      boost_assignment = c("random", "vulnerable"), 
+                      post_boost_disinhibition = c(0,1),
+                      lambda_0_N, 
+                      lambda_0_Y, 
+                      init_VE, 
+                      VE_wane, 
+                      Tmax, 
+                      sd_frail){
   
-  ### Simulate covariates that determine hazard
-  
-  #n=1000
-  #rho = 0.2
-  #Tmax=1
-  #boost_assignment="vulnerable"
-  #post_boost_disinhibition=1
-  #U1_shift = 1
-  #p_boost=0.90
-  #init_VE = -1
-  #VE_wane = 1
-  #lambda_0_Y=0.05
-  #lambda_0_N=0.038
+  #boost_assignment=match.arg(boost_assignment)
+  #post_boost_disinhibition=match.arg(boost_assignment)
   
   if(boost_assignment=="random"){
     
@@ -35,13 +44,13 @@ create_data<-function(n, p_boost, boost_assignment, post_boost_disinhibition, la
       cor_mat[1,2]<-cor_mat[2,1]<-rho
       #Random boosting so leave row and column 3 as zero
       
-      myCop <- normalCopula(param=P2p(cor_mat), dim = 3, dispstr = "un")
+      myCop <- copula::normalCopula(param=copula::P2p(cor_mat), dim = 3, dispstr = "un")
       
-      myMvd <- mvdc(copula=myCop, margins=c(rep("norm", 2), "unif"),
+      myMvd <- copula::mvdc(copula=myCop, margins=c(rep("norm", 2), "unif"),
                     paramMargins= list(list(mean=0, sd=sd_frail), list(mean=0, sd=sd_frail), list(min=0, max=Tmax + (1-p_boost))), 
                     marginsIdentical=FALSE)
       
-      vars <- rMvdc(n, myMvd)
+      vars <- copula::rMvdc(n=n, myMvd)
       
     }else if(post_boost_disinhibition==1){
       
@@ -51,13 +60,13 @@ create_data<-function(n, p_boost, boost_assignment, post_boost_disinhibition, la
       cor_mat[1,2]<-cor_mat[2,1]<-rho
       #Random boosting so leave row and column 3 as zero
       
-      myCop <- normalCopula(param=P2p(cor_mat), dim = 3, dispstr = "un")
+      myCop <- copula::normalCopula(param=copula::P2p(cor_mat), dim = 3, dispstr = "un")
       
-      myMvd <- mvdc(copula=myCop, margins=c(rep("norm", 2), "unif"),
+      myMvd <- copula::mvdc(copula=myCop, margins=c(rep("norm", 2), "unif"),
                     paramMargins= list(list(mean=0, sd=sd_frail), list(mean=1, sd=sd_frail), list(min=0, max=Tmax + (1-p_boost))), 
                     marginsIdentical=FALSE)
       
-      vars <- rMvdc(n, myMvd)
+      vars <- copula::rMvdc(n=n, myMvd)
       
     }
     
@@ -70,15 +79,15 @@ create_data<-function(n, p_boost, boost_assignment, post_boost_disinhibition, la
       diag(cor_mat)<-1
       cor_mat[1,2]<-cor_mat[2,1]<-rho
       # Strong (inverse) correlation between risk and boost time: highest risk vaccinated soonest
-      cor_mat[1,3]<-cor_mat[3,2]<-cor_mat[2,3]<-cor_mat[3,1]<--0.7
+      cor_mat[1,3]<-cor_mat[3,2]<-cor_mat[2,3]<-cor_mat[3,1]<- -0.7
       
-      myCop <- normalCopula(param=P2p(cor_mat), dim = 3, dispstr = "un")
+      myCop <- copula::normalCopula(param=copula::P2p(cor_mat), dim = 3, dispstr = "un")
       
-      myMvd <- mvdc(copula=myCop, margins=c(rep("norm", 2), "unif"),
+      myMvd <- copula::mvdc(copula=myCop, margins=c(rep("norm", 2), "unif"),
                     paramMargins= list(list(mean=0, sd=sd_frail), list(mean=0, sd=sd_frail), list(min=0, max=Tmax + (1-p_boost))), 
                     marginsIdentical=FALSE)
       
-      vars <- rMvdc(n, myMvd)
+      vars <- copula::rMvdc(n=n, myMvd)
       
     }else if(post_boost_disinhibition==1){
       
@@ -89,13 +98,13 @@ create_data<-function(n, p_boost, boost_assignment, post_boost_disinhibition, la
       # Strong (inverse) correlation between risk and boost time: highest risk vaccinated soonest
       cor_mat[1,3]<-cor_mat[3,2]<-cor_mat[2,3]<-cor_mat[3,1]<--0.7
       
-      myCop <- normalCopula(param=P2p(cor_mat), dim = 3, dispstr = "un")
+      myCop <- copula::normalCopula(param=copula::P2p(cor_mat), dim = 3, dispstr = "un")
       
-      myMvd <- mvdc(copula=myCop, margins=c(rep("norm", 2), "unif"),
+      myMvd <- copula::mvdc(copula=myCop, margins=c(rep("norm", 2), "unif"),
                     paramMargins= list(list(mean=0, sd=sd_frail), list(mean=1, sd=sd_frail), list(min=0, max=Tmax + (1-p_boost))), 
                     marginsIdentical=FALSE)
       
-      vars <- rMvdc(n, myMvd)
+      vars <- copula::rMvdc(n=n, myMvd)
       
     }
     
@@ -152,7 +161,7 @@ create_data<-function(n, p_boost, boost_assignment, post_boost_disinhibition, la
                             x = covars,
                             hazard = hazard_N,
                             maxt = Tmax,
-                            rootfun = qlogis,
+                            rootfun = stats::qlogis,
                             ids = covars$id,
                             idvar = "id")
   
@@ -160,7 +169,7 @@ create_data<-function(n, p_boost, boost_assignment, post_boost_disinhibition, la
                                   x = covars,
                                   hazard = hazard_Y_2,
                                   maxt = Tmax,
-                                  rootfun = qlogis,
+                                  rootfun = stats::qlogis,
                                   ids = covars$id,
                                   idvar = "id")
   
@@ -168,7 +177,7 @@ create_data<-function(n, p_boost, boost_assignment, post_boost_disinhibition, la
                                  x = covars,
                                  hazard = hazard_Y_2,
                                  maxt = Tmax,
-                                 rootfun = qlogis,
+                                 rootfun = stats::qlogis,
                                  ids = covars$id,
                                  idvar = "id")
   

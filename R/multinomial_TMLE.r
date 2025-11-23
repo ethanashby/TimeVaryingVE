@@ -1,24 +1,28 @@
-library(tidyverse)
-library(mgcv)
-library(splines)
-library(coneproj)
-
-# Multinomial TMLE for m strains (J=0 baseline, J=1,S=s for s=1..m)
-# Requires mgcv for smoothing alpha and optionally for p_s(t) estimation
-if(!requireNamespace("mgcv", quietly=TRUE)) install.packages("mgcv")
-library(mgcv)
-# tmle_multinomial.R
-library(splines)
-
-safe_clamp <- function(x, lower = 1E-10, upper = 1-1E-10) {
-  if (any(lower > upper)) stop("lower must be ≤ upper")
-  out <- x
-  out[!is.na(x) & x < lower] <- lower
-  out[!is.na(x) & x > upper] <- upper
-  out
-}
-
-tmle_multinomial <- function(dat,
+#' partially_linear_multinomial_tmle
+#'
+#' Function used to estimate time-varying VE using the partially linear *multinomial* logistic regression model adjusting for vaccine-irrelevant infections via the iterative TMLE method.
+#' 
+#' The code has an option to profile out nuisance parameters (the variant mixture proportions) by using external disease surveillance data.
+#' 
+#' @param dat data.frame, containing columns J.name, V.name, T.name, and V.early.name (optional).
+#' @param J.name character, column name associated with outcome type (J=0 vaccine-irrelevant, J=1 vaccine-preventable)
+#' @param V.name character, column name associated with vaccination date or peak immunization date (if V.early.name is specified)
+#' @param V.early.name character, OPTIONAL column name associated with "early" effectiveness (often the vaccination date itself)
+#' @param T.name character, column name associated with infection date
+#' @param S.name character, column name associated with the strain name (S=NA for irrelevant, S=1 for strain 1, S=2 for strain 2, etc.)
+#' @param psi_delta function, used to build the basis for time-varying VE
+#' @param m integer, number of strains of vaccine-preventable infection in the dataset
+#' @param p_s_fun function, OPTIONAL function that takes as input a vector of times and outputs mixture probabilities for the different strains
+#' @param maxit integer, maximum number of TMLE iterations
+#' @param tol numeric, tolerance limit to stop iterations
+#' @param kernel_shape character, kernel shape for nuisance parameter estimation. Options are "gaussian" and "epanechikov"
+#' @param bandwidth, numeric, OPTIONAL, the bandwidth for the kernel estimator for nuisance parameters
+#' @param automatic_bw logical, whether or not to use LOOCV to choose bandwidth. If FALSE and bandwidth is not provided, will use Silverman's rule of thumb.
+#' @param verbose logical, whether to print out intermediate info
+#' @param ... extra arguments to use for basis creation functions
+#' @return list containing parameter estimates associated with VE, SEs, cov matrix, the varying intercept alpha(t), and the basis
+#' @export
+partially_linear_multinomial_tmle <- function(dat,
                              T.name="T",
                              J.name="J",
                              V.name = "V",
@@ -26,14 +30,24 @@ tmle_multinomial <- function(dat,
                              S.name = "S",
                              psi_delta,
                              m = 2,
-                             verbose=TRUE,
-                             init_beta = NULL,
-                             p_s_fun = predict_GISAID,
-                             max_iter = 100,
+                             p_s_fun = NULL,
+                             maxit = 100,
                              tol = 1e-6,
-                             kernel_shape = "epanechikov",
+                             kernel_shape = c("gaussian", "epanechikov"),
                              bandwidth = NULL,
-                             automatic_bw = TRUE, ...) {
+                             automatic_bw = TRUE,
+                             verbose=TRUE, ...) {
+  
+  # Helper function to bound probabilities away from 0 and 1
+  
+  safe_clamp <- function(x, lower = 1E-10, upper = 1-1E-10) {
+    if (any(lower > upper)) stop("lower must be less than upper")
+    out <- x
+    out[!is.na(x) & x < lower] <- lower
+    out[!is.na(x) & x > upper] <- upper
+    out
+  }
+  
   
   ##########
   ### helper: compute Q_{0s}(T_i,V_i) given current beta, alpha and mixture p_s(t)
@@ -110,13 +124,15 @@ tmle_multinomial <- function(dat,
   d = p_tot/m
   
   # initial alpha (link) estimate: smooth J~s(T) on link scale and center
-  fit_alpha0 <- gam(J ~ s(`T`), dat = bind_cols(T=Tvec, J=J, Z = I(Vvec_early <= Tvec)) %>% filter(Z==0), family = binomial)
+  fit_alpha0 <- mgcv::gam(J ~ s(`T`), dat = dplyr::bind_cols(T=Tvec, J=J, Z = I(Vvec_early <= Tvec)) %>% dplyr::filter(Z==0), family = stats::binomial)
   alpha_link <- predict(fit_alpha0, dat, type = "link")
   alpha_link <- alpha_link
   
-  if(is.null(init_beta)){beta<-rep(0, p_tot)}else{beta<-init_beta}
+  #initial beta param
+  beta<-rep(0, p_tot)
   
-  probs <- compute_probs(Z_stack, beta, alpha_link, p_s_mixture_vecs = predict_GISAID(dat[[T.name]]))
+  #initial nuisances
+  probs <- compute_probs(Z_stack, beta, alpha_link, p_s_mixture_vecs = p_s_fun(dat[[T.name]]))
   Q0s_mat <- probs[,1:m] #Q0s_mat
   Q0 <- rowSums(probs[,1:m])
   
@@ -125,13 +141,13 @@ tmle_multinomial <- function(dat,
   }else if(is.null(bandwidth) & automatic_bw==FALSE){
     message("No bandwidth for nuisance estimation provided")
     message("Using Silverman's rule of thumb")
-    bw = 1.06 * sd(dat[[T.name]]) * n^(-1/5)
+    bw = 1.06 * stats::sd(dat[[T.name]]) * n^(-1/5)
   }else if(is.null(bandwidth) & automatic_bw==TRUE){
     message("No bandwidth for nuisance estimation provided")
     message("Using LOOCV to select bandwidth")
     # --- helper: gaussian kernel
     K <- function(u, kernel){
-      if(kernel=="gaussian"){dnorm(u)}
+      if(kernel=="gaussian"){stats::dnorm(u)}
       if(kernel=="epanechnikov"){
         ifelse(abs(u) <= 1, 0.75 * (1 - u^2), 0)
       }
@@ -188,7 +204,7 @@ tmle_multinomial <- function(dat,
     select_bandwidth <- function(Tvec, Vvec, Q0s_mat, Q0vec, psi_list,
                                  grid = NULL, ngrid = 12, shape) {
       n <- length(Tvec)
-      pilot <- 1.06 * sd(Tvec) * n^(-1/5)
+      pilot <- 1.06 * stats::sd(Tvec) * n^(-1/5)
       if (is.null(grid)) {
         grid <- exp(seq(log(pilot*0.25), log(pilot*2.5), length.out = ngrid))
       }
@@ -200,12 +216,12 @@ tmle_multinomial <- function(dat,
     bw = select_bandwidth(Tvec, Vvec, Q0s_mat = Q0s_mat, Q0vec = Q0, psi_list = bases, ngrid=25, shape="epanechnikov")$h
   }
   
-  for(iter in 1:max_iter){
+  for(iter in 1:maxit){
     
     if(iter==1){
     beta_new <- beta
     }
-    probs <- compute_probs(Z_stack, beta_new, alpha_link, p_s_mixture_vecs = predict_GISAID(dat[[T.name]]))
+    probs <- compute_probs(Z_stack, beta_new, alpha_link, p_s_mixture_vecs = p_s_fun(dat[[T.name]]))
     Q0s_mat <- probs[,1:m] #Q0s_mat
     Q0 <- rowSums(probs[,1:m])
   
@@ -228,10 +244,10 @@ tmle_multinomial <- function(dat,
         t0 <- Tvec[i]
         u <- (Tvec - t0) / bw
         if (kernel_shape == "gaussian") {
-          w <- dnorm(u)
+          w <- stats::dnorm(u)
         } else if (kernel_shape == "epanechnikov") {
           w <- ifelse(abs(u) <= 1, 0.75 * (1 - u^2), 0)
-        } else w <- dnorm(u)
+        } else w <- stats::dnorm(u)
         if (sum(w) == 0) w <- rep(1/n, n)
         w <- w / sum(w)
       
@@ -251,12 +267,12 @@ tmle_multinomial <- function(dat,
       H_list[[s]]<-H
     }
   
-    # fit_init <- gam(list(
+    # fit_init <- mgcv::gam(list(
     # S~0 + H_1_1 + H_1_2 + H_1_3 + offset(log(p_Delta)),
     # ~0 + H_2_1 + H_2_2 + H_2_3 + offset(log(p_Omicron)),
     # 1+2~ s(`T`)), 
-    # data=bind_cols(dat, H_list[[1]], H_list[[2]]), 
-    # family=multinom(K=2))
+    # data=dplyr::bind_cols(dat, H_list[[1]], H_list[[2]]), 
+    # family=mgcv::multinom(K=2))
     
     formula_list = vector(mode="list", length=m)
     
@@ -264,13 +280,13 @@ tmle_multinomial <- function(dat,
       
       if(i==1){
         
-        formula_list[[i]]<-as.formula(paste0("S~0 + ", 
+        formula_list[[i]]<-stats::as.formula(paste0("S~0 + ", 
                           paste0(colnames(H_list[[i]]), collapse="+"),
                           paste0("+offset(off", i, ")"), collapse=""))
         
       }else{
         
-        formula_list[[i]]<-as.formula(paste0("~0 + ", 
+        formula_list[[i]]<-stats::as.formula(paste0("~0 + ", 
                                              paste0(colnames(H_list[[i]]), collapse="+"),
                                              paste0("+offset(off", i, ")"), collapse=""))
         
@@ -280,19 +296,19 @@ tmle_multinomial <- function(dat,
     
     for(i in 1:m){
       if(i==1){
-        dat_tmp = bind_cols(dat, H_list[[i]])
+        dat_tmp = dplyr::bind_cols(dat, H_list[[i]])
         dat_tmp[[paste0("off", i)]]<-offset_list[[i]]
       }else{
-        dat_tmp = bind_cols(dat_tmp, H_list[[i]])
+        dat_tmp = dplyr::bind_cols(dat_tmp, H_list[[i]])
         dat_tmp[[paste0("off", i)]]<-offset_list[[i]]
       }
     }
     
-    fit_init <- gam(formula_list, 
+    fit_init <- mgcv::gam(formula_list, 
       data=dat_tmp, 
-      family=multinom(K=2))
+      family=mgcv::multinom(K=m))
   
-    eps_hat <- coef(fit_init)[1:p_tot]
+    eps_hat <- stats::coef(fit_init)[1:p_tot]
     
     beta_new <- beta_new + eps_hat
     
@@ -324,10 +340,12 @@ tmle_multinomial <- function(dat,
     
     EIC_mat <- t(invI %*% t(scores))
     
-    var_beta_s = cov(EIC_mat)/n
+    var_beta_s = stats::cov(EIC_mat)/n
     
     list_out[[paste0("var_beta", s)]]<-var_beta_s
   }
+  
+  list_out[["bases"]]<-bases
   
   return(
     list_out

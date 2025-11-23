@@ -185,7 +185,6 @@ SimEngine::run_on_cluster(
       res_sieve_const<-sieve_partially_linear_logistic(dat=dat_const_run, 
                                                        psi_delta = psi_d2, 
                                                        V.early.name=NULL,
-                                                       monotone=FALSE, 
                                                        verbose=FALSE)
       
       Amat = matrix(0, nrow = nrow(const_summary)-1, ncol= nrow(const_summary))
@@ -209,7 +208,7 @@ SimEngine::run_on_cluster(
       
       # C) TMLE -- Linear Estimator
       
-      res_tmle_const<-tmle_iterative(dat=dat_const_run, psi_delta = psi_d2, V.early.name=NULL, monotone=FALSE, verbose=FALSE)
+      res_tmle_const<-tmle_partially_linear_logistic(dat=dat_const_run, psi_delta = psi_d2, V.early.name=NULL, verbose=FALSE)
       
       f_tmle <- isotone_f(res_tmle_const$beta, 
                            vcov = res_tmle_const$cov[1:length(res_tmle_const$beta), 1:length(res_tmle_const$beta)], 
@@ -331,7 +330,6 @@ SimEngine::run_on_cluster(
       res_sieve_wane<-sieve_partially_linear_logistic(dat=dat_wane_run, 
                                                        psi_delta = psi_d2, 
                                                        V.early.name=NULL,
-                                                       monotone=FALSE, 
                                                        verbose=FALSE)
       
       Amat = matrix(0, nrow = nrow(const_summary)-1, ncol= nrow(const_summary))
@@ -355,7 +353,7 @@ SimEngine::run_on_cluster(
       
       # C) TMLE -- Linear Estimator
       
-      res_tmle_wane<-tmle_iterative(dat=dat_wane_run, psi_delta = psi_d2, V.early.name=NULL, monotone=FALSE, verbose=FALSE)
+      res_tmle_wane<-tmle_partially_linear_logistic(dat=dat_wane_run, psi_delta = psi_d2, V.early.name=NULL,verbose=FALSE)
       
       f_tmle <- isotone_f(res_tmle_wane$beta, 
                           vcov = res_tmle_wane$cov[1:length(res_tmle_wane$beta), 1:length(res_tmle_wane$beta)], 

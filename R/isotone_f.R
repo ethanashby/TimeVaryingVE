@@ -10,8 +10,8 @@ isotone_f <- function(beta_hat, vcov, grid, indices_to_monotonize, Amat){
   
   # compute wald CI (unconstrained)
   ses_f <- sqrt(diag(grid %*% vcov %*% t(grid)))
-  f_lci <- f_hat - qnorm(0.975) * ses_f
-  f_uci <- f_hat + qnorm(0.975) * ses_f
+  f_lci <- f_hat - stats::qnorm(0.975) * ses_f
+  f_uci <- f_hat + stats::qnorm(0.975) * ses_f
   
   # compute weights for PAVA
   weights<- 1/ses_f^2

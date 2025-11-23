@@ -141,7 +141,7 @@ dat_const_run <- dat_const %>%
 
 # Sieve summary
 
-res_sieve_const<-sieve_partially_linear_logistic(dat=dat_const_run, psi_delta = psi_d2, monotone=FALSE)
+res_sieve_const<-sieve_partially_linear_logistic(dat=dat_const_run, psi_delta = psi_d2)
 
 Amat <- matrix(0, nrow=nrow(const_summary)-1, ncol=nrow(const_summary))
 
@@ -163,7 +163,7 @@ const_summary$logRR_sieve_uci <- fit$f_uci
 
 # TMLE summary
 
-res_tmle_const<-tmle_iterative(dat=dat_const_run, psi_delta = psi_d2, monotone=FALSE)
+res_tmle_const<-tmle_partially_linear_logistic(dat=dat_const_run, psi_delta = psi_d2)
 
 fit<-isotone_f(res_tmle_const$beta, 
                vcov = res_tmle_const$cov, 
@@ -301,7 +301,7 @@ dat_wane_run <- dat_wane %>%
 
 # Sieve summary
 
-res_sieve_wane<-sieve_partially_linear_logistic(dat=dat_wane_run, psi_delta = psi_d2, monotone=FALSE)
+res_sieve_wane<-sieve_partially_linear_logistic(dat=dat_wane_run, psi_delta = psi_d2)
 
 Amat <- matrix(0, nrow=nrow(wane_summary)-1, ncol=nrow(wane_summary))
 
@@ -323,7 +323,7 @@ wane_summary$logRR_sieve_uci <- fit$f_uci
 
 # TMLE summary
 
-res_tmle_wane<-tmle_iterative(dat=dat_wane_run, psi_delta = psi_d2, monotone=FALSE)
+res_tmle_wane<-tmle_partially_linear_logistic(dat=dat_wane_run, psi_delta = psi_d2)
 
 fit<-isotone_f(res_tmle_wane$beta, 
                vcov = res_tmle_wane$cov, 

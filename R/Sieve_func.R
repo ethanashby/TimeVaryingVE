@@ -1,41 +1,25 @@
-##################################################################
-# Sieve Estimator For VE waning
-##################################################################
+#' sieve_partially_linear_logistic
+#'
+#' Function used to estimate time-varying VE using the partially linear logistic regression model adjusting for vaccine-irrelevant infections via the sieve method.
+#' 
+#' @param dat data.frame, containing columns J.name, V.name, T.name, and V.early.name (optional).
+#' @param J.name character, column name associated with outcome type (J=0 vaccine-irrelevant, J=1 vaccine-preventable)
+#' @param V.name character, column name associated with vaccination date or peak immunization date (if V.early.name is specified)
+#' @param V.early.name character, OPTIONAL column name associated with "early" effectiveness (often the vaccination date itself)
+#' @param T.name character, column name associated with infection date
+#' @param psi_delta function, used to build the basis for time-varying VE
+#' @param verbose logical, whether to print out intermediate info
+#' @param ... extra arguments to use for basis creation functions
+#' @return list containing parameter estimates associated with VE, SEs, vcov matrix, the varying intercept alpha(t), and the basis
+#' @export
 
-# library(tidyverse)
-# library(mgcv)
-# library(splines)
-# library(coneproj)
-
-# psi_d2 <- function(Tvec, Vvec) {
-#   # Vmat: n x d
-#   # default: psi(T-V) = V
-#   return(cbind(as.numeric(Tvec - Vvec > 0), pmax(0, Tvec-Vvec)))
-# }
-# 
-# psi_bs <- function(Tvec, Vvec, df=3) {
-#   # Vmat: n x d
-#   # default: psi(T-V) = V
-#   return(cbind(as.numeric(Tvec - Vvec > 0), bs(pmax(0, Tvec-Vvec), df=df, degree = 3)))
-# }
-# 
-# psi_d2_early <- function(Tvec, Vvec, Vvec_early){
-#   
-#   return(cbind(
-#     as.numeric(between(Tvec, Vvec_early, Vvec)), #early vaccination
-#     as.numeric(Tvec - Vvec > 0), #full vaccination
-#     pmax(0, Tvec-Vvec))) #time-since-full vaccination
-#   
-# }
-
-sieve_partially_linear_logistic <- function(dat, J.name="J", V.name="V", V.early.name=NULL, T.name="T", 
-                                            psi_delta, verbose=TRUE, monotone=FALSE, Amat=NULL, ...){
-  
-  
-  #dat<- dat_const_run
-
-  # dat=delta_eligible
-  #J.name="J" ; T.name="T" ; V.name="V"; V.early.name="V_early"
+sieve_partially_linear_logistic <- function(dat, 
+                                            J.name="J", 
+                                            V.name="V", 
+                                            V.early.name=NULL, 
+                                            T.name="T", 
+                                            psi_delta, 
+                                            verbose=TRUE, ...){
   
   n <- nrow(dat)
   J <- as.numeric(dat[[J.name]])
@@ -66,59 +50,14 @@ sieve_partially_linear_logistic <- function(dat, J.name="J", V.name="V", V.early
   
   fit<-glm(as.formula(
   paste0("J ~ -1 + ", paste0("f", 1:ncol(Z), collapse="+"), "+", paste0("alpha", 1:ncol(alphas), collapse="+"), collapse="")),
-  data=to_regress, family=binomial)
+  data=to_regress, family=stats::binomial)
   
   beta <- coef(fit)[1:d]
   se_beta <- summary(fit)$coef[1:d,2]
   cov <- vcov(fit)[1:d, 1:d]
   alpha <- coef(fit)[(d+1):length(coef(fit))]
   
-  # update: Smooth beta
-  if(monotone==FALSE){
-    Amat=NULL
-    beta_mono=vector(length=0)
-  }
-  if(monotone==TRUE){
-    if (verbose) cat(sprintf("Smoothing beta to be monotone"))
-    
-    
-    if(is.null(Amat)){
-      Amat <- matrix(0, nrow=length(beta), ncol=length(beta))
-      
-      # This works for B-spline *without* I(V ≤ T) intercept
-      for(i in 1:nrow(Amat)){
-        
-        if(length(beta)==2){
-          
-          Amat[1,1] = -1
-          Amat[2,2] = 1
-          
-        }else{
-          
-          if(i==1){
-            Amat[i,i] = -1
-          }else{
-            Amat[i,(i-1)] = -1
-            Amat[i,(i)] = 1
-          }
-        }
-      }
-    }else{
-      Amat = Amat
-    }
-    
-    beta_mono <- coneproj::coneA(y=beta, amat=Amat, w=1/se_beta^2)$theta[,1]
-  }
-  
-  if(monotone==TRUE){
-    
-    beta_mono = beta_mono
-    
-  }else{
-    
-    beta_mono=beta
-    
-  }
+  beta_mono=beta
   
   return(
     list(
@@ -126,7 +65,7 @@ sieve_partially_linear_logistic <- function(dat, J.name="J", V.name="V", V.early
       beta_unconstr = beta,
       se = se_beta,
       cov = cov,
-      Amat = Amat,
+      #Amat = Amat,
       basis = base$basis,
       alpha = alpha
     )
