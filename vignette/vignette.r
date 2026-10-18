@@ -12,10 +12,11 @@ library(splines2)
 library(survival)
 library(ggnewscale)
 library(patchwork)
-source("../TimeVaryingVE/R/create_data.R")
-source("../TimeVaryingVE/R/TMLE_func.R")
-source("../TimeVaryingVE/R/Sieve_func.R")
-source("../TimeVaryingVE/R/isotone_f.R")
+source("./TimeVaryingVE/R/create_data.R")
+source("./TimeVaryingVE/R/basis_f.R")
+source("./TimeVaryingVE/R/TMLE_func.R")
+source("./TimeVaryingVE/R/Sieve_func.R")
+source("./TimeVaryingVE/R/isotone_f.R")
 
 # Run function under certain set of parameters
 
@@ -382,7 +383,7 @@ p2 <- ggplot(wane_summary)+
        #caption = "n=16,000\nBoosting confounded by susceptibility\nPost-boost behavioral disinhibition",
        x= "Time since vaccination", y="Vaccine Efficacy (VE; 1-HR)")
 
-#pdf("../VE_vignette_dos.pdf", width=9, height=6)
+pdf("./TimeVaryingVE/vignette/VE_vignette.pdf", width=9, height=6)
 p1+ theme(plot.caption = element_text(hjust = 0), plot.subtitle = element_text(size=20),
           axis.title = element_text(size=18),
           legend.title=element_text(size=16), 
@@ -391,9 +392,9 @@ p2 +theme(plot.caption = element_text(hjust = 0), plot.subtitle = element_text(s
           axis.title = element_text(size=18),
           legend.title=element_text(size=16), 
           legend.text=element_text(size=14))+
-plot_layout(guides = "collect") & theme(legend.position = "bottom")
+patchwork::plot_layout(guides = "collect") & theme(legend.position = "bottom")
 # labs(
 #   caption = "n=16,000\nBoosting confounded by susceptibility\nPost-boost behavioral disinhibition"
 # )+
 # theme(plot.caption = element_text(hjust = 0))
-#dev.off()
+dev.off()
