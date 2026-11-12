@@ -21,7 +21,9 @@ Imports:
     survival,
     tidyverse,
     stats,
-    dplyr,
-    patchwork,
-    knitr
+    dplyr
+Suggests:
+    rmarkdown,
+    knitr,
+    patchwork
 VignetteBuilder: knitr

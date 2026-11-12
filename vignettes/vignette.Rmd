@@ -385,7 +385,7 @@ wane_summary <- wane_summary %>%
 
 Below we produce the compare the time-varying VE estimates for naive Cox regression to our proposed estimators to the *true* VE waning parameters under the multiplicative frailty model under both design alternatives.
 
-```{r figs, fig.cap="Time-varying VE estimates obtained from naive Cox regression and our proposed estimators under both design alternatives of constant and waning VE", fig.width=8, fig.height=7}
+```{r figs, fig.cap="Time-varying VE estimates obtained from naive Cox regression and our proposed estimators under both design alternatives of constant and waning VE", fig.width=7.5, fig.height=5.75}
 p1 <- const_summary %>%
   ggplot(.)+
   geom_jitter(aes(x=tau, y=-0.5, color=Event), width=0, height=0.25, data=dat_const_run %>% 

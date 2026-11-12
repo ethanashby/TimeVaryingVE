@@ -33,10 +33,10 @@ You can find a detailed script `vignette.r` which will reproduce a mock
 analysis shown in the paper's supplement. Below, we walk through a
 minimal example to help you design your own mock analysis.
 
-*Step 1*: installl and load required packages and analysis functions
+*Step 1*: install and load required packages and analysis functions
 
 ```{r}
-remotes::install_github("ethanashby/TimeVaryingVE")
+remotes::install_github("ethanashby/TimeVaryingVE", dependencies=TRUE, build_vignettes=TRUE)
 library(TimeVaryingVE)
 ```
 
