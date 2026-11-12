@@ -13,7 +13,7 @@ This vignette demonstrates the package's example data generator and compares
 estimates of vaccine effectiveness under constant and waning effectiveness.
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, eval = TRUE, warning = FALSE, message=FALSE)
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, warning = FALSE, message=FALSE, cache=TRUE)
 ```
 
 # Package and dependencies load
@@ -39,7 +39,7 @@ library(here)
 
 Below, we generate data from the package's example data generator which is based on a multiplicative frailty model. We simulate data for 10,000 participants, 85% of whom receive vaccination over a 1 year time frame. We assume random vaccination assignment and no behavioral disinhibition (i.e., greater frailty values) post-vaccination. We assume the frailties are generated from a normal distribution with standard deviation 2.5, indicating substantial levels of unmeasured heterogeneity in infection risk. The code below simulates data under two design alternatives: (i) VE is truly constant in time-since-vaccination (VE=63%) and (ii) VE wanes linearly in time-since-vaccination on the log hazard ratio scale from 63% to 0% after 1 year.
 
-```{r generate-data}
+```{r generate-data, eval=T}
 
 set.seed(4743)
 
@@ -385,7 +385,7 @@ wane_summary <- wane_summary %>%
 
 Below we produce the compare the time-varying VE estimates for naive Cox regression to our proposed estimators to the *true* VE waning parameters under the multiplicative frailty model under both design alternatives.
 
-```{r figs, fig.cap="Time-varying VE estimates obtained from naive Cox regression and our proposed estimators under both design alternatives of constant and waning VE", fig.width=10, fig.height=8}
+```{r figs, fig.cap="Time-varying VE estimates obtained from naive Cox regression and our proposed estimators under both design alternatives of constant and waning VE", fig.width=8, fig.height=7}
 p1 <- const_summary %>%
   ggplot(.)+
   geom_jitter(aes(x=tau, y=-0.5, color=Event), width=0, height=0.25, data=dat_const_run %>% 
