@@ -1,5 +1,3 @@
-
-
 sim<-readRDS("./Desktop/sim.rds")
 
 for(i in 1:length(sim$results_complex)){

@@ -1,3 +1,7 @@
+---
+---
+---
+
 # `TimeVaryingVE`: Debiasing time-varying, hazard-based vaccine effectiveness estimates using vaccine-irrelevant infections
 
 This repo contains the conents of the R package `TimeVaryingVE`, which
@@ -5,8 +9,7 @@ can be used to estimate time-varying vaccine effectiveness while
 avoiding confounding and selection bias by adjusting for negative
 control, vaccine-irrelevant infections.The repository contains R
 functions and associated documentation, an illustrative vignette, and
-simulation scripts that were used to evaluate this method in [our
-manuscript](https://arxiv.org/abs/2511.15099).
+simulation scripts that were used to evaluate this method.
 
 ## Can't I just use Cox regression?
 
@@ -18,8 +21,7 @@ of unmeasured confounding. To address these challenges, we develop an
 alternative estimation approach that implicitly corrects for frailty
 imbalances based on semiparametric partially linear logistic regression
 to avoid bias and correctly infer waning vaccine effectiveness estimates
-from observational data. You can find our paper detailing the
-methodology [here](https://arxiv.org/abs/2511.15099).
+from observational data.
 
 ![Example data application to hypothetical randomized trial of 10,000
 participants with unmeasured heterogeneity in infection
