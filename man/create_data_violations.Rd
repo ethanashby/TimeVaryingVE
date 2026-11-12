@@ -64,7 +64,7 @@ uniformly between 0 and Tmax (default) or occur at baseline
 with probability 1}
 
 \item{variant_midpoint}{numeric, calendar time at which the circulating
-variant prevalence is 50\\%}
+variant prevalence is 50 percent}
 
 \item{variant_steepness}{numeric, controls how rapidly the circulating
 variant shifts from strain A to strain B}
@@ -82,6 +82,11 @@ frailty on the NCO endpoint relative to the primary endpoint;
 list containing "covars", "dat_N", "dat_Y_const", and "dat_Y_variant".
 }
 \description{
+Function used to generate survival data consistent with RCTs/observational
+studies measuring vaccine-preventable and irrelevant infections when
+identification assumptions DO NOT hold.
+}
+\details{
 Function used to generate survival data for RCTs/observational studies
 measuring vaccine-preventable (Y) and vaccine-irrelevant/negative-control
 (N) infections when one or more identification assumptions may be violated.

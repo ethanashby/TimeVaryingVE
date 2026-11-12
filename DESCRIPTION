@@ -19,5 +19,8 @@ Imports:
     splines,
     stats,
     survival,
-    tidyverse
+    tidyverse,
+    stats,
+    dplyr,
+    Patchwork,
 VignetteBuilder: knitr

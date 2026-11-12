@@ -1,58 +1,62 @@
-# Debiasing time-varying, hazard-based vaccine effectiveness estimates using vaccine-irrelevant infections
+# `TimeVaryingVE`: Debiasing time-varying, hazard-based vaccine effectiveness estimates using vaccine-irrelevant infections
 
-This repo includes functions to estimate time-varying vaccine
-effectiveness while avoiding confounding and selection bias by adjusting
-for negative control, vaccine-irrelevant infections.
+This repo contains the conents of the R package `TimeVaryingVE`, which
+can be used to estimate time-varying vaccine effectiveness while
+avoiding confounding and selection bias by adjusting for negative
+control, vaccine-irrelevant infections.The repository contains R
+functions and associated documentation, an illustrative vignette, and
+simulation scripts that were used to evaluate this method in [our
+manuscript](https://arxiv.org/abs/2511.15099).
 
 ## Can't I just use Cox regression?
 
-Even in randomized studies, standard Cox regression does not provide
-reliable evidence of waning vaccine effectiveness due to depletion of
-susceptibles bias. We develop an alternative estimation approach based
-on semiparametric partially linear logistic regression to avoid bias and
-correctly infer waning vaccine effectiveness estimates from
-observational data. You can find our paper detailing the methodology
-[here](https://arxiv.org/abs/2511.15099).
+Even in randomized studies, standard, partial-likelihood-based Cox
+regression does not provide reliable evidence of waning vaccine
+effectiveness due to depletion of susceptibles bias. In observational
+studies, the risk of hidden bias is even greater due to various layers
+of unmeasured confounding. To address these challenges, we develop an
+alternative estimation approach that implicitly corrects for frailty
+imbalances based on semiparametric partially linear logistic regression
+to avoid bias and correctly infer waning vaccine effectiveness estimates
+from observational data. You can find our paper detailing the
+methodology [here](https://arxiv.org/abs/2511.15099).
 
 ![Example data application to hypothetical randomized trial of 10,000
 participants with unmeasured heterogeneity in infection
 risk.](vignette/VE_vignette.jpg){width="8in"}
 
-## How do I apply this method?
+## How do I use this package?
 
 You can find a detailed script `vignette.r` which will reproduce a mock
 analysis shown in the paper's supplement. Below, we walk through a
 minimal example to help you design your own mock analysis.
 
-*Step 1*: load required packages and analysis functions
+*Step 1*: installl and load required packages and analysis functions
 
-``` r
-library(mgcv, tidyverse, survival)
-library(coneproj)
-source("../TimeVaryingVE/R/create_data.R")
-source("../TimeVaryingVE/R/TMLE_func.R")
-source("../TimeVaryingVE/R/basis_f.R")
+```{r}
+remotes::install_github("ethanashby/TimeVaryingVE")
+library(TimeVaryingVE)
 ```
 
 *Step 2* initialize configuration parameters and create mock datasets.
 
--   `n`: number of participants in study
--   `p_boost`: probability of study participants being vaccinated
--   `boost_assignment`: choose between "random" or "vulnerable" to
-    determine whether vaccination date is associated with underlying
-    risk, or early vaccination is associated with higher risk.
--   `lambda_0_N`: time-averaged baseline hazard of vaccine-irrelevant
-    (negative control) infection
--   `lambda_0_Y`: time-averaged baseline hazard of vaccine-preventable
-    (primary) infection.
--   `init_VE`: log(HR) associated with vaccination immediately after
-    vaccination.
--   `VE_wane`: how log(HR) varies (linearly) in time-since-vaccination
--   `Tmax`: duration of study (years)
--   `sd_frail`: the parameter governing the level of frailty
-    heterogeneity, as $\log(U) \sim N(0, \text{sd}_{frail})$
+- `n`: number of participants in study
+- `p_boost`: probability of study participants being vaccinated
+- `boost_assignment`: choose between "random" or "vulnerable" to
+  determine whether vaccination date is associated with underlying risk,
+  or early vaccination is associated with higher risk.
+- `lambda_0_N`: time-averaged baseline hazard of vaccine-irrelevant
+  (negative control) infection
+- `lambda_0_Y`: time-averaged baseline hazard of vaccine-preventable
+  (primary) infection.
+- `init_VE`: log(HR) associated with vaccination immediately after
+  vaccination.
+- `VE_wane`: how log(HR) varies (linearly) in time-since-vaccination
+- `Tmax`: duration of study (years)
+- `sd_frail`: the parameter governing the level of frailty
+  heterogeneity, as $\log(U) \sim N(0, \text{sd}_{frail})$
 
-``` r
+```{r}
 L<-list(n=10000, 
         p_boost=0.85, 
         boost_assignment="random", 
@@ -95,7 +99,8 @@ dat_wane<-data.frame(
 
 *Step 3* Run proposed TMLE estimator on waning dataset.
 
-``` r
+```{r}
+
 dat_wane_run <- dat_wane %>%
   filter(Delta_Y==1 | Delta_N==1) %>%
   transmute(
@@ -106,4 +111,31 @@ dat_wane_run <- dat_wane %>%
   )
   
 res_tmle_wane<-tmle_iterative(dat=dat_wane_run, psi_delta = psi_d2, monotone=FALSE)
+```
+
+*Step 4* (Optional) Apply post-hoc isotonic correction to the
+time-varying VE estimator.
+
+```{r}
+
+wane_summary <- data.frame(
+  A = rep(1, 101),
+  tau = seq(0, 1, by=0.01)
+)
+
+Amat <- matrix(0, nrow=nrow(wane_summary)-1, ncol=nrow(wane_summary))
+
+# Construct dual constraint cone
+for(i in 1:(nrow(wane_summary)-1)){
+  
+  Amat[i,i] = -1
+  Amat[i,(i+1)] = 1
+}
+
+fit<-isotone_f(res_tmle_wane$beta, 
+               vcov = res_tmle_wane$cov, 
+               grid = as.matrix(wane_summary[,1:2]), 
+               indices_to_monotonize = 1:nrow(wane_summary), 
+               Amat = Amat)
+
 ```

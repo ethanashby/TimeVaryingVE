@@ -19,7 +19,6 @@
 #' @examples
 #' create_data(n=100, p_boost=0.70, boost_assignment="vulnerable", post_boost_disinhibition=1, lambda_0_N=0.06, lambda_0_Y=0.08, init_VE=1.3, VE_wane = -0.5, Tmax=1, sd_frail=1.3)
 #' @export
-
 create_data<-function(n, 
                       p_boost, 
                       boost_assignment = c("random", "vulnerable"), 
@@ -195,9 +194,11 @@ create_data<-function(n,
   
 }
 
-
-#'
 #' create_data_violations
+#'
+#' Function used to generate survival data consistent with RCTs/observational 
+#' studies measuring vaccine-preventable and irrelevant infections when 
+#' identification assumptions DO NOT hold.
 #'
 #' Function used to generate survival data for RCTs/observational studies
 #' measuring vaccine-preventable (Y) and vaccine-irrelevant/negative-control
@@ -227,7 +228,7 @@ create_data<-function(n,
 #' @param VE_wane_B numeric, change in log(HR) per unit time since vaccination
 #'        for strain B
 #' @param variant_midpoint numeric, calendar time at which the circulating
-#'        variant prevalence is 50\%
+#'        variant prevalence is 50 percent
 #' @param variant_steepness numeric, controls how rapidly the circulating
 #'        variant shifts from strain A to strain B
 #' @param nco_hr numeric, hazard ratio for vaccination on the NCO endpoint;
@@ -249,8 +250,6 @@ create_data<-function(n,
 #' VE_wane_B=0, Tmax=1, baseline_vaxx=TRUE, variant_midpoint=0.5, nco_hr = 1,
 #' bias_equiv_factor = 1, sd_frail=1.3)
 #' @export
-#'
-
 create_data_violations <- function(
     n,
     p_boost,

@@ -13,10 +13,7 @@
 #' @param indices_to_monotonize numeric, vector of row indices to apply the monotone projection. Typically, will want to focus on indices after which we anticipate VE will be monotone (e.g., indices >14-days post vaccination)
 #' @param Amat matrix, the constraint matrix where rows define the normal vectors of the bounding hyperplanes.
 #' @return list of length three containing the monotonized estimate of f and its confidence limits
-#' @examples
-#'
 #' @export
-
 isotone_f <- function(beta_hat, vcov, grid, indices_to_monotonize, Amat){
   
   # compute estimate of f (unconstrained)
