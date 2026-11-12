@@ -23,7 +23,7 @@ methodology [here](https://arxiv.org/abs/2511.15099).
 
 ![Example data application to hypothetical randomized trial of 10,000
 participants with unmeasured heterogeneity in infection
-risk.](vignette/VE_vignette.jpg){width="8in"}
+risk.](vignettes/VE_vignette.jpg)
 
 ## How do I use this package?
 

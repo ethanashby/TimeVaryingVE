@@ -22,5 +22,6 @@ Imports:
     tidyverse,
     stats,
     dplyr,
-    Patchwork,
+    patchwork,
+    knitr
 VignetteBuilder: knitr
