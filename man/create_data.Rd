@@ -42,7 +42,7 @@ create_data(
 list containing elements "covars" with summary info (including id, frailties, and vaccination status), "dat_N" containing vaccine-irrelevant infetcion data, "dat_Y_const" containing vaccine-preventable infection data with constant VE, and "dat_Y_wane" containing vaccine-preventable infection data with waning VE.
 }
 \description{
-Function used to generate survival data consistent with RCTs/observational studies measuring vaccine-preventable and irrelevant infections/
+Function used to generate survival data consistent with RCTs/observational studies measuring vaccine-preventable and irrelevant infections when identification assumptions hold.
 }
 \details{
 The following code generates data under two scenarios (i) a constant VE setting and (ii) a linearly waning VE setting on the log hazard ratio scale.

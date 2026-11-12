@@ -2,6 +2,8 @@
 
 S3method(predict,linear_basis)
 export(create_data)
+export(create_data_violations)
+export(isotone_f)
 export(linear_basis)
 export(partially_linear_multinomial_sieve)
 export(partially_linear_multinomial_tmle)

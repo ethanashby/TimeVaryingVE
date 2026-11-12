@@ -201,15 +201,12 @@ create_data<-function(n,
 #'
 #' Function used to generate survival data for RCTs/observational studies
 #' measuring vaccine-preventable (Y) and vaccine-irrelevant/negative-control
-#' (N) infections when one or more identification assumptions may be violated.
-#'
-#' The function accommodates:
-#' (i) a non-zero treatment effect on the negative-control endpoint,
-#' (ii) a shift in circulating variants during follow-up, such that vaccine
-#'      effectiveness is a time-varying interpolation between effectiveness
-#'      against strains A and B, and
-#' (iii) violation of the equiconfounding assumption through differential
-#'      effects of unmeasured frailty on the two endpoints.
+#' (N) infections when one or more identification assumptions may be violated. 
+#' The function accommodates: a non-zero treatment effect on the negative
+#' control endpoint, a shift in circulating variants during follow-up, such that 
+#' vaccine effectiveness is a time-varying interpolation between effectiveness,
+#' against strains A and B, and violation of the equiconfounding assumption 
+#' through differential effects of unmeasured frailty on the two endpoints.
 #'
 #' @param n numeric, number of participants to simulate
 #' @param p_boost numeric, probability of vaccination at some point during study
@@ -244,9 +241,13 @@ create_data<-function(n,
 #'        with probability 1
 #' @param sd_frail numeric, standard deviation of the lognormal frailty
 #'
-#' @return list containing "covars", "dat_N", "dat_Y_const", and
-#' "dat_Y_variant".
-#'
+#' @return list containing "covars", "dat_N", "dat_Y_const", and "dat_Y_variant".
+#' @examples
+#' create_data_violations(n=1500, p_boost=0.70, boost_assignment="random", 
+#' post_boost_disinhibition=1, lambda_0_N=0.06, lambda_0_Y_A=0.08, 
+#' lambda_0_Y_B=0.08, init_VE_A= 1.3, init_VE_B = 0.3, VE_wane_A = 0, 
+#' VE_wane_B=0, Tmax=1, baseline_vaxx=TRUE, variant_midpoint=0.5, nco_hr = 1,
+#' bias_equiv_factor = 1, sd_frail=1.3)
 #' @export
 #'
 

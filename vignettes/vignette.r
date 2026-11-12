@@ -12,11 +12,17 @@ library(splines2)
 library(survival)
 library(ggnewscale)
 library(patchwork)
-source("./TimeVaryingVE/R/create_data.R")
-source("./TimeVaryingVE/R/basis_f.R")
-source("./TimeVaryingVE/R/TMLE_func.R")
-source("./TimeVaryingVE/R/Sieve_func.R")
-source("./TimeVaryingVE/R/isotone_f.R")
+library(here)
+source(paste0(here(), "/R/create_data.R"))
+source(paste0(here(), "/R/basis_f.R"))
+source(paste0(here(), "/R/TMLE_func.R"))
+source(paste0(here(), "/R/Sieve_func.R"))
+source(paste0(here(), "/R/isotone_f.R"))
+#source("./TimeVaryingVE/R/create_data.R")
+#source("./TimeVaryingVE/R/basis_f.R")
+#source("./TimeVaryingVE/R/TMLE_func.R")
+#source("./TimeVaryingVE/R/Sieve_func.R")
+#source("./TimeVaryingVE/R/isotone_f.R")
 
 # Run function under certain set of parameters
 
@@ -44,6 +50,9 @@ df <- create_data(n=L$n,
                   VE_wane=L$VE_wane, 
                   Tmax=L$Tmax,
                   sd_frail = L$sd_frail)
+
+#### NOTE: save the file as 'dummy.RDS'. This is the dummy dataset that can be used for reproducibility
+# write_rds(df, paste0(here(), "/vignette/dummy.RDS"))
 
 ### Package data appropriately
 
@@ -383,7 +392,8 @@ p2 <- ggplot(wane_summary)+
        #caption = "n=16,000\nBoosting confounded by susceptibility\nPost-boost behavioral disinhibition",
        x= "Time since vaccination", y="Vaccine Efficacy (VE; 1-HR)")
 
-pdf("./TimeVaryingVE/vignette/VE_vignette.pdf", width=9, height=6)
+# Include the 'pdf' command if you wish to save the output of the plot
+#pdf(paste0(here(), "/vignette/VE_vignette.pdf"), width=9, height=6)
 p1+ theme(plot.caption = element_text(hjust = 0), plot.subtitle = element_text(size=20),
           axis.title = element_text(size=18),
           legend.title=element_text(size=16), 
@@ -397,4 +407,4 @@ patchwork::plot_layout(guides = "collect") & theme(legend.position = "bottom")
 #   caption = "n=16,000\nBoosting confounded by susceptibility\nPost-boost behavioral disinhibition"
 # )+
 # theme(plot.caption = element_text(hjust = 0))
-dev.off()
+#dev.off()

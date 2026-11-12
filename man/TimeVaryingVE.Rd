@@ -6,7 +6,7 @@
 \alias{TimeVaryingVE}
 \title{TimeVaryingVE: Tools for Time-Varying Vaccine Effectiveness}
 \description{
-This package includes R functions to estimate time-varying vaccine effectiveness adjusting for vaccine-irrelevant infections to avoid bias.
+This package includes R functions to estimate time-varying vaccine effectiveness adjusting for vaccine-irrelevant infections to avoid selection and confounding bias.
 }
 \author{
 \strong{Maintainer}: Ethan Ashby \email{ecadeashby@gmail.com}

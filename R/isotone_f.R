@@ -1,7 +1,21 @@
-################
-# Isotonic time-varying VE calibration
-# Dependencies: coneproj
-#library(coneproj)
+#' isotone_f
+#'
+#' Post-hoc projection of time-varying VE estimates.
+#' 
+#' The following code projects unconstrained time-varying VE estimates obtained
+#' from the semiparametric logistic regression model onto a contraint cone. This
+#' is especially useful for imposing shape contraints, in our case, monotonicity
+#' of the time-varying VE function.
+#' 
+#' @param beta_hat numeric, d-dimensional vector of coefficients associated with time-since-vaccination basis
+#' @param vcov matrix, dxd covariance matrix of coefficient vector
+#' @param grid matrix, lxd matrix of gridpoints that you wish to evaluate the time-varying VE function at
+#' @param indices_to_monotonize numeric, vector of row indices to apply the monotone projection. Typically, will want to focus on indices after which we anticipate VE will be monotone (e.g., indices >14-days post vaccination)
+#' @param Amat matrix, the constraint matrix where rows define the normal vectors of the bounding hyperplanes.
+#' @return list of length three containing the monotonized estimate of f and its confidence limits
+#' @examples
+#'
+#' @export
 
 isotone_f <- function(beta_hat, vcov, grid, indices_to_monotonize, Amat){
   

@@ -1,9 +1,9 @@
 Package: TimeVaryingVE
-Title: What the Package Does (One Line, Title Case)
-Version: 0.0.0.9000
+Title: Debiased estimation of time-varying vaccine effectiveness using vaccine-irrelevant infections
+Version: 0.1.0
 Authors@R: 
     person("Ethan", "Ashby", , "ecadeashby@gmail.com", role = c("aut", "cre"))
-Description: What the package does (one paragraph).
+Description: This package contains R functions for implementing time-varying vaccine effectiveness estimation that accounts for vaccine-irrelevant infections to avoid selection and confounding bias.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -18,4 +18,6 @@ Imports:
     simsurv,
     splines,
     stats,
-    survival
+    survival,
+    tidyverse
+VignetteBuilder: knitr
